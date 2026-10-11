@@ -22,18 +22,15 @@ posture_wizard/
 dependencies:
   flutter:
     sdk: flutter
-  # Serial communication over USB
-  # For Desktop (Windows/macOS/Linux): flutter_libserialport
-  # For Android USB-OTG: usb_serial_communication or flutter_serial_communication
+  Serial communication over USB
+  For Desktop (Windows/macOS/Linux): flutter_libserialport
+  For Android USB-OTG: usb_serial_communication or flutter_serial_communication
   universal_serial: ^0.0.1       # Or flutter_libserialport for desktop USB serial
-  
-  # UI & Charts for the Statistics Tab
+  UI & Charts for the Statistics Tab
   fl_chart: ^0.69.0              # To render the focus stats bar/line charts
-  
-  # State Management
+  State Management
   provider: ^6.1.2               # Or flutter_riverpod
-  
-  # Local Storage for Preferences & Historical Logs
+  Local Storage for Preferences & Historical Logs
   shared_preferences: ^2.3.2
 
   ## Team Setup & Development Guide
