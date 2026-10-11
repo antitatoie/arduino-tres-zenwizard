@@ -21,7 +21,7 @@ posture_wizard/
 └── README.md
 ```
 
-### Dependencies
+### Dependencies (Please check if you have the proper dependencies)
 ```yaml
 dependencies:
   flutter:
