@@ -1,9 +1,11 @@
 # arduino-tres-zenwizard
-Smart desk ergonomics &amp; workspace environment monitor built with Flutter, Dart, and Arduino (DHT11, LDR, RGB LED, Buzzer).
 
-**Expected Project Structure (template only subject to change)**
+Smart desk ergonomics & workspace environment monitor built with Flutter, Dart, and Arduino (DHT11, LDR, RGB LED, Buzzer).
+
+### Expected Project Structure (template only subject to change)
+```text
 posture_wizard/
-├── firmware/                       # Arduino sketches & hardware circuit diagrams
+├── firmware/                        # Arduino sketches & hardware circuit diagrams
 │   └── posture_wizard_firmware/
 │       └── posture_wizard_firmware.ino
 ├── lib/
@@ -17,21 +19,28 @@ posture_wizard/
 │       └── settings_screen.dart   # Figure 3: Lux/Temp thresholds, COM port selector
 ├── pubspec.yaml
 └── README.md
+```
 
-**Dependencies should include these**
+### Dependencies
+```yaml
 dependencies:
   flutter:
     sdk: flutter
-  Serial communication over USB
-  For Desktop (Windows/macOS/Linux): flutter_libserialport
-  For Android USB-OTG: usb_serial_communication or flutter_serial_communication
-  universal_serial: ^0.0.1       # Or flutter_libserialport for desktop USB serial
-  UI & Charts for the Statistics Tab
-  fl_chart: ^0.69.0              # To render the focus stats bar/line charts
-  State Management
-  provider: ^6.1.2               # Or flutter_riverpod
-  Local Storage for Preferences & Historical Logs
+
+  # Serial communication over USB
+  # For Desktop (Windows/macOS/Linux): flutter_libserialport
+  # For Android USB-OTG: usb_serial_communication or flutter_serial_communication
+  universal_serial: ^0.0.1        # Or flutter_libserialport for desktop USB serial
+
+  # UI & Charts for the Statistics Tab
+  fl_chart: ^0.69.0               # To render the focus stats bar/line charts
+
+  # State Management
+  provider: ^6.1.2                # Or flutter_riverpod
+
+  # Local Storage for Preferences & Historical Logs
   shared_preferences: ^2.3.2
+```
 
   ## Team Setup & Development Guide
 
