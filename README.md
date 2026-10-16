@@ -52,7 +52,10 @@ git clone [https://github.com/antitatoie/posture-wizard.git](https://github.com/
 cd posture-wizard
 ```
 ---
-
+### 1.1 When Switching to a Branch
+``` bash
+git checkout zenwizardv1
+```
 ### 2. Install Dependencies
 ```bash
 flutter pub get
@@ -64,13 +67,15 @@ flutter pub get
 flutter doctor
 ```
 ---
+### 4.1 For Windows Desktop (to test USB Serial & Arduino hardware):
 
-### 4. Run the Project
 ```bash
-flutter run
+flutter run -d windows
 ```
----
-
+### 4.2 For Cross-Platform / Chrome (running in Mock Mode):
+``` bash
+flutter run -d chrome
+```
 ### 5. Git Workflow
 ```bash
 # 1. Update your local main branch
