@@ -1,103 +1,76 @@
-import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/environment_provider.dart';
+import '../providers/timer_provider.dart';
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+class HomeScreen extends StatelessWidget {
+  final VoidCallback? onOpenSettings;
 
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
-  static const int _defaultSeconds = 25 * 60;
-  int _remainingSeconds = _defaultSeconds;
-  bool _isRunning = false;
-  Timer? _timer;
-
-  void _toggleTimer() {
-    if (_isRunning) {
-      _timer?.cancel();
-      setState(() => _isRunning = false);
-    } else {
-      setState(() => _isRunning = true);
-      _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        if (_remainingSeconds > 0) {
-          setState(() => _remainingSeconds--);
-        } else {
-          _timer?.cancel();
-          setState(() => _isRunning = false);
-        }
-      });
-    }
-  }
-
-  void _resetTimer() {
-    _timer?.cancel();
-    setState(() {
-      _isRunning = false;
-      _remainingSeconds = _defaultSeconds;
-    });
-  }
-
-  String get _formattedTime {
-    final minutes = (_remainingSeconds ~/ 60).toString().padLeft(2, '0');
-    final seconds = (_remainingSeconds % 60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
-  }
-
-  double get _progress {
-    // Matches the 78% default visual ring when at 25:00, or live progress when running
-    if (_remainingSeconds == _defaultSeconds && !_isRunning) {
-      return 0.78;
-    }
-    return _remainingSeconds / _defaultSeconds;
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
+  const HomeScreen({super.key, this.onOpenSettings});
 
   @override
   Widget build(BuildContext context) {
+    final envProvider = context.watch<EnvironmentProvider>();
+    final timerProvider = context.watch<TimerProvider>();
+
+    final telemetry = envProvider.latestTelemetry;
+    final evaluation = envProvider.latestEvaluation;
+
+    final double lux = telemetry?.lux ?? 419.0;
+    final double temp = telemetry?.temperature ?? 23.8;
+    final double hum = telemetry?.humidity ?? 52.0;
+
+    final bool isLightOk = evaluation?.isLightOptimal ?? true;
+    final bool isTempOk = evaluation?.isTempOptimal ?? true;
+    final bool isHumOk = evaluation?.isHumidityOptimal ?? true;
+
+    final String bannerText = evaluation?.lightStatusMessage ??
+        'Lighting optimal — ${lux.toStringAsFixed(0)} lx detected';
+
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 30, 20, 116),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Top Header
+          // Top Header (Wrapped in Expanded to prevent horizontal overflow)
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'ARDUINO ENVIRONMENT',
-                    style: TextStyle(
-                      color: Color(0xFF718096),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.4,
-                      height: 1.2,
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'ARDUINO ENVIRONMENT',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Color(0xFF718096),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.4,
+                        height: 1.2,
+                      ),
                     ),
-                  ),
-                  SizedBox(height: 7),
-                  Text(
-                    'Workspace Status',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 23,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.9,
-                      height: 1.1,
+                    SizedBox(height: 7),
+                    Text(
+                      'Workspace Status',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 23,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.9,
+                        height: 1.1,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
               Container(
                 width: 44,
                 height: 44,
@@ -112,7 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     color: Color(0xFF8A99AD),
                     size: 20,
                   ),
-                  onPressed: () {},
+                  onPressed: onOpenSettings,
                   tooltip: 'Settings',
                 ),
               ),
@@ -121,38 +94,42 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 24),
 
           // 3-Column Sensor Metric Grid
-          const Row(
+          Row(
             children: [
               Expanded(
                 child: _MetricCard(
                   label: 'Light',
-                  value: '419 lx',
-                  status: 'Optimal',
+                  value: '${lux.toStringAsFixed(0)} lx',
+                  status: isLightOk ? 'Optimal' : 'Low Light',
                   icon: Icons.wb_sunny_outlined,
-                  primaryColor: Color(0xFF2E8BFF),
-                  statusColor: Color(0xFF4AA8FF),
+                  primaryColor: isLightOk
+                      ? const Color(0xFF2E8BFF)
+                      : const Color(0xFFEF4444),
+                  statusColor: isLightOk
+                      ? const Color(0xFF4AA8FF)
+                      : const Color(0xFFF87171),
                 ),
               ),
-              SizedBox(width: 8),
+              const SizedBox(width: 8),
               Expanded(
                 child: _MetricCard(
                   label: 'Temp',
-                  value: '23.8 °C',
-                  status: 'Good',
+                  value: '${temp.toStringAsFixed(1)} °C',
+                  status: isTempOk ? 'Good' : 'Alert',
                   icon: Icons.thermostat_outlined,
-                  primaryColor: Color(0xFF10B981),
-                  statusColor: Color(0xFF34D399),
+                  primaryColor: const Color(0xFF10B981),
+                  statusColor: const Color(0xFF34D399),
                 ),
               ),
-              SizedBox(width: 8),
+              const SizedBox(width: 8),
               Expanded(
                 child: _MetricCard(
                   label: 'Humidity',
-                  value: '52 %',
-                  status: 'Normal',
+                  value: '${hum.toStringAsFixed(0)} %',
+                  status: isHumOk ? 'Normal' : 'Alert',
                   icon: Icons.water_drop_outlined,
-                  primaryColor: Color(0xFFF59E0B),
-                  statusColor: Color(0xFFFBBF24),
+                  primaryColor: const Color(0xFFF59E0B),
+                  statusColor: const Color(0xFFFBBF24),
                 ),
               ),
             ],
@@ -179,7 +156,7 @@ class _HomeScreenState extends State<HomeScreen> {
               width: 228,
               height: 228,
               child: CustomPaint(
-                painter: _TimerRingPainter(progress: _progress),
+                painter: _TimerRingPainter(progress: timerProvider.progress),
                 child: Center(
                   child: Container(
                     width: 212,
@@ -198,7 +175,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          _formattedTime,
+                          timerProvider.formattedTime,
                           style: const TextStyle(
                             fontFamily: 'monospace',
                             color: Colors.white,
@@ -232,7 +209,7 @@ class _HomeScreenState extends State<HomeScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               GestureDetector(
-                onTap: _toggleTimer,
+                onTap: timerProvider.toggle,
                 child: Container(
                   width: 112,
                   height: 44,
@@ -249,7 +226,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                   child: Text(
-                    _isRunning ? 'Pause' : 'Start',
+                    timerProvider.isRunning ? 'Pause' : 'Start',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 14,
@@ -260,7 +237,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(width: 12),
               GestureDetector(
-                onTap: _resetTimer,
+                onTap: timerProvider.reset,
                 child: Container(
                   width: 112,
                   height: 44,
@@ -289,8 +266,14 @@ class _HomeScreenState extends State<HomeScreen> {
             height: 46,
             padding: const EdgeInsets.symmetric(horizontal: 15),
             decoration: BoxDecoration(
-              color: const Color(0xFF0D2821),
-              border: Border.all(color: const Color(0xFF185A47)),
+              color: isLightOk
+                  ? const Color(0xFF0D2821)
+                  : const Color(0xFF2C1215),
+              border: Border.all(
+                color: isLightOk
+                    ? const Color(0xFF185A47)
+                    : const Color(0xFF7F1D1D),
+              ),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Row(
@@ -298,24 +281,33 @@ class _HomeScreenState extends State<HomeScreen> {
                 Container(
                   width: 5,
                   height: 5,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF66D8AD),
+                  decoration: BoxDecoration(
+                    color: isLightOk
+                        ? const Color(0xFF66D8AD)
+                        : const Color(0xFFF87171),
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Color(0xFF66D8AD),
+                        color: isLightOk
+                            ? const Color(0xFF66D8AD)
+                            : const Color(0xFFF87171),
                         blurRadius: 8,
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(width: 9),
-                const Text(
-                  'Lighting optimal — 419 lx detected',
-                  style: TextStyle(
-                    color: Color(0xFF66D8AD),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
+                Expanded(
+                  child: Text(
+                    bannerText,
+                    style: TextStyle(
+                      color: isLightOk
+                          ? const Color(0xFF66D8AD)
+                          : const Color(0xFFF87171),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
@@ -366,13 +358,18 @@ class _MetricCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  color: Color(0xFF8A99AD),
-                  fontSize: 11,
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF8A99AD),
+                    fontSize: 11,
+                  ),
                 ),
               ),
+              const SizedBox(width: 4),
               Icon(
                 icon,
                 size: 17,
@@ -381,13 +378,17 @@ class _MetricCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 13),
-          Text(
-            value,
-            style: TextStyle(
-              color: primaryColor,
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.8,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: TextStyle(
+                color: primaryColor,
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.8,
+              ),
             ),
           ),
           const SizedBox(height: 9),
@@ -408,11 +409,15 @@ class _MetricCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 5),
-              Text(
-                status,
-                style: TextStyle(
-                  color: statusColor,
-                  fontSize: 9,
+              Expanded(
+                child: Text(
+                  status,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 9,
+                  ),
                 ),
               ),
             ],
@@ -433,7 +438,6 @@ class _TimerRingPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = (size.width - 8) / 2;
 
-    // Outer ambient glow
     final glowPaint = Paint()
       ..color = const Color(0xFF2E8BFF).withValues(alpha: 0.2)
       ..style = PaintingStyle.stroke
@@ -441,14 +445,12 @@ class _TimerRingPainter extends CustomPainter {
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 15);
     canvas.drawCircle(center, radius, glowPaint);
 
-    // Background track ring (#1D2B3F)
     final trackPaint = Paint()
       ..color = const Color(0xFF1D2B3F)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 8;
     canvas.drawCircle(center, radius, trackPaint);
 
-    // Active progress arc (#2E8BFF)
     final sweepAngle = 2 * math.pi * progress;
     final progressPaint = Paint()
       ..color = const Color(0xFF2E8BFF)
@@ -464,7 +466,6 @@ class _TimerRingPainter extends CustomPainter {
       progressPaint,
     );
 
-    // Glowing indicator dot at the end of the progress arc
     final dotAngle = -math.pi / 2 + sweepAngle;
     final dotCenter = Offset(
       center.dx + radius * math.cos(dotAngle),

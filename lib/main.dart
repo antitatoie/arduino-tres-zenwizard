@@ -1,33 +1,69 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'providers/environment_provider.dart';
+import 'providers/timer_provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/stats_screen.dart';
 import 'screens/settings_screen.dart';
+import 'services/serial_port_service.dart';
+import 'services/threshold_alert_service.dart';
 
 void main() {
   runApp(const ZenWizardApp());
 }
 
-class ZenWizardApp extends StatelessWidget {
+class ZenWizardApp extends StatefulWidget {
   const ZenWizardApp({super.key});
 
   @override
+  State<ZenWizardApp> createState() => _ZenWizardAppState();
+}
+
+class _ZenWizardAppState extends State<ZenWizardApp> {
+  late final SerialPortService _serialService;
+  late final ThresholdAlertService _alertService;
+
+  @override
+  void initState() {
+    super.initState();
+    _serialService = SerialPortService();
+    _alertService = ThresholdAlertService();
+  }
+
+  @override
+  void dispose() {
+    _serialService.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'ZenWizard',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF0B0F17),
-        fontFamily: 'Inter',
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF2E8BFF),
-          secondary: Color(0xFF10B981),
-          tertiary: Color(0xFFF59E0B),
-          surface: Color(0xFF151C28),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(
+          create: (_) => EnvironmentProvider(_serialService, _alertService),
         ),
+        ChangeNotifierProvider(
+          create: (_) => TimerProvider(_serialService),
+        ),
+      ],
+      child: MaterialApp(
+        title: 'ZenWizard',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          brightness: Brightness.dark,
+          scaffoldBackgroundColor: const Color(0xFF0B0F17),
+          fontFamily: 'Inter',
+          colorScheme: const ColorScheme.dark(
+            primary: Color(0xFF2E8BFF),
+            secondary: Color(0xFF10B981),
+            tertiary: Color(0xFFF59E0B),
+            surface: Color(0xFF151C28),
+          ),
+        ),
+        home: const AppShell(),
       ),
-      home: const AppShell(),
     );
   }
 }
@@ -42,14 +78,18 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _currentIndex = 0;
 
-  final List<Widget> _screens = const [
-    HomeScreen(),
-    StatsScreen(),
-    SettingsScreen(),
-  ];
+  void _switchTab(int index) {
+    setState(() => _currentIndex = index);
+  }
 
   @override
   Widget build(BuildContext context) {
+    final List<Widget> screens = [
+      HomeScreen(onOpenSettings: () => _switchTab(2)),
+      const StatsScreen(),
+      const SettingsScreen(),
+    ];
+
     return Scaffold(
       backgroundColor: const Color(0xFF070A10),
       body: Container(
@@ -82,12 +122,9 @@ class _AppShellState extends State<AppShell> {
               ),
               child: Stack(
                 children: [
-                  // Active Tab Screen
                   Positioned.fill(
-                    child: _screens[_currentIndex],
+                    child: screens[_currentIndex],
                   ),
-
-                  // Frosted Bottom Navigation Bar
                   Positioned(
                     left: 0,
                     right: 0,
@@ -99,7 +136,8 @@ class _AppShellState extends State<AppShell> {
                           height: 88,
                           padding: const EdgeInsets.fromLTRB(52, 6, 52, 14),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF0D121B).withValues(alpha: 0.94),
+                            color: const Color(0xFF0D121B)
+                                .withValues(alpha: 0.94),
                             border: const Border(
                               top: BorderSide(
                                 color: Color(0xFF222C3C),
@@ -150,7 +188,7 @@ class _AppShellState extends State<AppShell> {
         isActive ? const Color(0xFF63ADFF) : const Color(0xFF69768A);
 
     return GestureDetector(
-      onTap: () => setState(() => _currentIndex = index),
+      onTap: () => _switchTab(index),
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
         width: 68,
