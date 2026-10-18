@@ -20,7 +20,6 @@ class PomodoroState {
 
   double get progress {
     if (totalSeconds <= 0) return 0.0;
-    if (remainingSeconds == totalSeconds && !isRunning) return 0.78;
     return (remainingSeconds / totalSeconds).clamp(0.0, 1.0);
   }
 

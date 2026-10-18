@@ -1,4 +1,9 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../models/telemetry_data.dart';
+import '../providers/environment_provider.dart';
+import '../providers/timer_provider.dart';
 
 class StatsScreen extends StatelessWidget {
   const StatsScreen({super.key});
@@ -16,6 +21,15 @@ class StatsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final envProvider = context.watch<EnvironmentProvider>();
+    final timerProvider = context.watch<TimerProvider>();
+    final history = envProvider.history;
+
+    final double avgTemp = history.isEmpty
+        ? 22.1
+        : history.map((e) => e.temperature).reduce((a, b) => a + b) /
+            history.length;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 30, 20, 116),
       child: Column(
@@ -78,6 +92,28 @@ class StatsScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 20),
+
+          // Live Lux Line Chart Card (fl_chart)
+          _TelemetryLineChartCard(
+            title: 'LIVE LIGHT TELEMETRY (LUX)',
+            unit: 'lx',
+            lineColor: const Color(0xFF2E8BFF),
+            history: history,
+            valueExtractor: (d) => d.lux,
+            defaultValue: 419.0,
+          ),
+          const SizedBox(height: 12),
+
+          // Live Temperature Line Chart Card (fl_chart)
+          _TelemetryLineChartCard(
+            title: 'LIVE TEMPERATURE TELEMETRY (°C)',
+            unit: '°C',
+            lineColor: const Color(0xFF10B981),
+            history: history,
+            valueExtractor: (d) => d.temperature,
+            defaultValue: 23.8,
+          ),
+          const SizedBox(height: 12),
 
           // Weekly Focus Bar Chart Card
           Container(
@@ -205,40 +241,40 @@ class StatsScreen extends StatelessWidget {
           const SizedBox(height: 12),
 
           // 2x2 Summary Grid
-          const Row(
+          Row(
             children: [
               Expanded(
                 child: _SummaryCard(
                   label: 'TOTAL SESSIONS',
-                  value: '25',
+                  value: '${timerProvider.completedSessions}',
                   sub: 'Completed',
-                  valueColor: Color(0xFF2E8BFF),
+                  valueColor: const Color(0xFF2E8BFF),
                 ),
               ),
-              SizedBox(width: 10),
+              const SizedBox(width: 10),
               Expanded(
                 child: _SummaryCard(
                   label: 'FOCUS TIME',
-                  value: '10.4',
+                  value: timerProvider.totalFocusHours.toStringAsFixed(1),
                   sub: 'Hours',
-                  valueColor: Color(0xFF10B981),
+                  valueColor: const Color(0xFF10B981),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 10),
-          const Row(
+          Row(
             children: [
               Expanded(
                 child: _SummaryCard(
                   label: 'AVG TEMP',
-                  value: '22.1',
+                  value: avgTemp.toStringAsFixed(1),
                   sub: '°C',
-                  valueColor: Color(0xFFF59E0B),
+                  valueColor: const Color(0xFFF59E0B),
                 ),
               ),
-              SizedBox(width: 10),
-              Expanded(
+              const SizedBox(width: 10),
+              const Expanded(
                 child: _SummaryCard(
                   label: 'BEST DAY',
                   value: 'Fri',
@@ -247,6 +283,111 @@ class StatsScreen extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TelemetryLineChartCard extends StatelessWidget {
+  final String title;
+  final String unit;
+  final Color lineColor;
+  final List<TelemetryData> history;
+  final double Function(TelemetryData) valueExtractor;
+  final double defaultValue;
+
+  const _TelemetryLineChartCard({
+    required this.title,
+    required this.unit,
+    required this.lineColor,
+    required this.history,
+    required this.valueExtractor,
+    required this.defaultValue,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final List<FlSpot> spots = history.isEmpty
+        ? [FlSpot(0, defaultValue), FlSpot(1, defaultValue)]
+        : List.generate(
+            history.length,
+            (i) => FlSpot(i.toDouble(), valueExtractor(history[i])),
+          );
+
+    final double latestVal =
+        history.isEmpty ? defaultValue : valueExtractor(history.last);
+
+    return Container(
+      height: 185,
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF171F2B),
+            Color(0xFF121923),
+          ],
+        ),
+        border: Border.all(color: const Color(0xFF222C3C)),
+        borderRadius: BorderRadius.circular(17),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Color(0xFF718096),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.4,
+                ),
+              ),
+              Text(
+                '${latestVal.toStringAsFixed(1)} $unit',
+                style: TextStyle(
+                  color: lineColor,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Expanded(
+            child: LineChart(
+              LineChartData(
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  getDrawingHorizontalLine: (_) => const FlLine(
+                    color: Color(0xFF222C3C),
+                    strokeWidth: 1,
+                  ),
+                ),
+                titlesData: const FlTitlesData(show: false),
+                borderData: FlBorderData(show: false),
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: spots,
+                    isCurved: true,
+                    color: lineColor,
+                    barWidth: 2.5,
+                    dotData: const FlDotData(show: false),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      color: lineColor.withValues(alpha: 0.14),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),

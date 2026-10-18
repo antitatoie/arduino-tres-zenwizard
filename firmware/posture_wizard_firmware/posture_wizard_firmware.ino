@@ -21,11 +21,13 @@
 const bool COMMON_ANODE = false;
 
 // =================== TIMING CONSTANTS (ms) ===================
-const unsigned long INTERVAL_LDR_MS    = 250;  // Poll LDR every 250ms
-const unsigned long INTERVAL_DHT_MS    = 2000; // Poll DHT11 every 2000ms
-const unsigned long INTERVAL_SERIAL_MS = 500;  // Push JSON telemetry every 500ms
-const unsigned long INTERVAL_ALERT_MS  = 250;  // Pomodoro flash/beep toggle interval
-const unsigned long POMODORO_DURATION  = 8000; // Auto-stop Pomodoro alert after 8s
+const unsigned long INTERVAL_LDR_MS        = 250;  // Poll LDR every 250ms
+const unsigned long INTERVAL_DHT_MS        = 2000; // Poll DHT11 every 2000ms
+const unsigned long INTERVAL_SERIAL_MS     = 500;  // Push JSON telemetry every 500ms
+const unsigned long INTERVAL_ALERT_MS      = 250;  // Pomodoro flash/beep toggle interval
+const unsigned long POMODORO_DURATION      = 8000; // Auto-stop Pomodoro alert after 8s
+const unsigned long LOW_LIGHT_BEEP_PERIOD  = 4000; // Gentle beep cycle every 4s during low light
+const unsigned long LOW_LIGHT_BEEP_ON_MS   = 120;  // Short 120ms pulse for low-light warning
 
 // =================== LDR LUX CALIBRATION ===================
 // Circuit: 5V -> LDR -> A0 -> 10k Ohm Resistor -> GND
@@ -41,11 +43,12 @@ const float LUX_CALC_EXPONENT = -1.405;
 // =================== STATE & TELEMETRY GLOBALS ===================
 DHT dht(PIN_DHT, DHT_TYPE);
 
-unsigned long lastLdrMillis    = 0;
-unsigned long lastDhtMillis    = 0;
-unsigned long lastSerialMillis = 0;
-unsigned long lastAlertToggle  = 0;
-unsigned long alertStartMillis = 0;
+unsigned long lastLdrMillis        = 0;
+unsigned long lastDhtMillis        = 0;
+unsigned long lastSerialMillis     = 0;
+unsigned long lastAlertToggle      = 0;
+unsigned long alertStartMillis     = 0;
+unsigned long lowLightCycleMillis  = 0;
 
 // Sensor values (with EMA smoothing for LDR and fallback cache for DHT11)
 float smoothedLux   = 400.0;
@@ -91,20 +94,14 @@ void setBuzzer(bool active) {
  * Converts 10-bit ADC (0-1023) to Lux using voltage divider & power-law curve:
  * Lux = Scalar * (R_ldr ^ Exponent)
  */
+// Replace adcToLux() in posture_wizard_firmware.ino with this:
 float adcToLux(int rawAdc) {
-  rawAdc = constrain(rawAdc, 1, 1022);
-  float vOut = (rawAdc / 1023.0) * VIN;
-  float rLdr;
+  rawAdc = constrain(rawAdc, 0, 1023);
+  float ratio = rawAdc / 1023.0;
 
-  if (LDR_PULLUP) {
-    // 5V -> LDR -> A0 -> 10k -> GND (Brighter light = higher ADC)
-    rLdr = R_FIXED * (VIN - vOut) / vOut;
-  } else {
-    // 5V -> 10k -> A0 -> LDR -> GND (Brighter light = lower ADC)
-    rLdr = R_FIXED * vOut / (VIN - vOut);
-  }
+  // Scaled so your baseline room light matches your phone (~115 lux)
+  float lux = ratio * 3500.0;
 
-  float lux = LUX_CALC_SCALAR * pow(rLdr, LUX_CALC_EXPONENT);
   return constrain(lux, 0.0, 2000.0);
 }
 
@@ -166,10 +163,19 @@ void pollSerialRx() {
 void updateLdrTask(unsigned long now) {
   if (now - lastLdrMillis >= INTERVAL_LDR_MS) {
     lastLdrMillis = now;
-    int rawAdc = analogRead(PIN_LDR);
+
+    // Take 10 rapid samples and average them to eliminate USB power noise/jitter
+    long rawSum = 0;
+    for (int i = 0; i < 10; i++) {
+      rawSum += analogRead(PIN_LDR);
+      delayMicroseconds(50); // Tiny micro-delay between samples
+    }
+    int rawAdc = rawSum / 10;
+
     float instantLux = adcToLux(rawAdc);
-    // Exponential Moving Average (EMA) smoothing (alpha = 0.25)
-    smoothedLux = (0.25 * instantLux) + (0.75 * smoothedLux);
+
+    // Heavy exponential smoothing (alpha = 0.05) locks the value steady
+    smoothedLux = (0.05 * instantLux) + (0.95 * smoothedLux);
   }
 }
 
@@ -188,6 +194,7 @@ void updateDhtTask(unsigned long now) {
 }
 
 void updateActuatorStateMachine(unsigned long now) {
+  // a) Pomodoro Break Override Mode: pulse buzzer + flash RGB LED non-stop for 8 seconds
   if (currentMode == MODE_POMODORO_OVERRIDE) {
     if (now - alertStartMillis >= POMODORO_DURATION) {
       currentMode = MODE_AMBIENT_MONITOR;
@@ -207,12 +214,20 @@ void updateActuatorStateMachine(unsigned long now) {
       }
     }
   } else {
-    // MODE_AMBIENT_MONITOR: Green = Optimal (>= threshold), Red = Low Light (< threshold)
-    setBuzzer(false);
+    // b) Low Light Warning Mode (Ambient Monitor):
+    // Green = Optimal (>= threshold), Red + periodic gentle short beep = Low Light (< threshold)
     if (smoothedLux < luxThreshold) {
       setRgbColor(255, 0, 0); // Red: Eye strain warning
+      unsigned long elapsed = now - lowLightCycleMillis;
+      if (elapsed >= LOW_LIGHT_BEEP_PERIOD) {
+        lowLightCycleMillis = now;
+        elapsed = 0;
+      }
+      setBuzzer(elapsed < LOW_LIGHT_BEEP_ON_MS);
     } else {
       setRgbColor(0, 255, 0); // Green: Optimal workspace lighting
+      setBuzzer(false);
+      lowLightCycleMillis = now;
     }
   }
 }

@@ -30,4 +30,27 @@ class SettingsConfig {
       maxTempCelsius: maxTempCelsius ?? this.maxTempCelsius,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'pomodoroDurationMinutes': pomodoroDurationMinutes,
+      'breakDurationMinutes': breakDurationMinutes,
+      'lightAlertThresholdLux': lightAlertThresholdLux,
+      'minTempCelsius': minTempCelsius,
+      'maxTempCelsius': maxTempCelsius,
+    };
+  }
+
+  factory SettingsConfig.fromJson(Map<String, dynamic> json) {
+    return SettingsConfig(
+      pomodoroDurationMinutes:
+          (json['pomodoroDurationMinutes'] as num?)?.toInt() ?? 25,
+      breakDurationMinutes:
+          (json['breakDurationMinutes'] as num?)?.toInt() ?? 5,
+      lightAlertThresholdLux:
+          (json['lightAlertThresholdLux'] as num?)?.toDouble() ?? 300.0,
+      minTempCelsius: (json['minTempCelsius'] as num?)?.toDouble() ?? 18.0,
+      maxTempCelsius: (json['maxTempCelsius'] as num?)?.toDouble() ?? 26.0,
+    );
+  }
 }

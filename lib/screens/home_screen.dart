@@ -1,18 +1,34 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../models/pomodoro_state.dart';
 import '../providers/environment_provider.dart';
 import '../providers/timer_provider.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   final VoidCallback? onOpenSettings;
 
   const HomeScreen({super.key, this.onOpenSettings});
 
   @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  String? _selectedPort;
+  bool _isConnecting = false;
+
+  @override
   Widget build(BuildContext context) {
     final envProvider = context.watch<EnvironmentProvider>();
     final timerProvider = context.watch<TimerProvider>();
+
+    final ports = envProvider.availablePorts;
+    if (_selectedPort != null && !ports.contains(_selectedPort)) {
+      _selectedPort = ports.isNotEmpty ? ports.first : null;
+    } else if (_selectedPort == null && ports.isNotEmpty) {
+      _selectedPort = ports.first;
+    }
 
     final telemetry = envProvider.latestTelemetry;
     final evaluation = envProvider.latestEvaluation;
@@ -85,13 +101,157 @@ class HomeScreen extends StatelessWidget {
                     color: Color(0xFF8A99AD),
                     size: 20,
                   ),
-                  onPressed: onOpenSettings,
+                  onPressed: widget.onOpenSettings,
                   tooltip: 'Settings',
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
+
+          // Top COM Port Connection Bar
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF151C28),
+              border: Border.all(color: const Color(0xFF222C3C)),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: envProvider.isConnected
+                        ? const Color(0xFF10B981)
+                        : const Color(0xFFF59E0B),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: envProvider.isConnected
+                            ? const Color(0xFF10B981)
+                            : const Color(0xFFF59E0B),
+                        blurRadius: 6,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ports.isEmpty
+                      ? Text(
+                          envProvider.activePortLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFF8A99AD),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        )
+                      : DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: _selectedPort,
+                            isDense: true,
+                            isExpanded: true,
+                            dropdownColor: const Color(0xFF151C28),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            items: ports
+                                .map(
+                                  (port) => DropdownMenuItem<String>(
+                                    value: port,
+                                    child: Text(
+                                      port,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (val) {
+                              setState(() => _selectedPort = val);
+                            },
+                          ),
+                        ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  height: 30,
+                  child: TextButton(
+                    style: TextButton.styleFrom(
+                      backgroundColor: envProvider.isConnected
+                          ? const Color(0xFF1E293B)
+                          : const Color(0xFF2E8BFF),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    onPressed: _isConnecting
+                        ? null
+                        : () async {
+                            if (envProvider.isConnected) {
+                              await envProvider.disconnectPort();
+                              return;
+                            }
+                            final target = _selectedPort ??
+                                (ports.isNotEmpty ? ports.first : null);
+                            if (target == null) {
+                              envProvider.refreshPorts();
+                              return;
+                            }
+                            setState(() => _isConnecting = true);
+                            await envProvider.connectToPort(target);
+                            if (mounted) {
+                              setState(() => _isConnecting = false);
+                            }
+                          },
+                    child: Text(
+                      _isConnecting
+                          ? '...'
+                          : (envProvider.isConnected
+                              ? 'Disconnect'
+                              : 'Connect'),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                SizedBox(
+                  width: 30,
+                  height: 30,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(
+                      Icons.refresh_rounded,
+                      color: Color(0xFF8A99AD),
+                      size: 17,
+                    ),
+                    tooltip: 'Refresh Ports',
+                    onPressed: () {
+                      envProvider.refreshPorts();
+                      final updated = envProvider.availablePorts;
+                      setState(() {
+                        if (updated.isNotEmpty &&
+                            !updated.contains(_selectedPort)) {
+                          _selectedPort = updated.first;
+                        }
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
 
           // 3-Column Sensor Metric Grid
           Row(
@@ -186,9 +346,11 @@ class HomeScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        const Text(
-                          'FOCUS',
-                          style: TextStyle(
+                        Text(
+                          timerProvider.phase == PomodoroPhase.focus
+                              ? 'FOCUS'
+                              : 'BREAK',
+                          style: const TextStyle(
                             color: Color(0xFF718096),
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
@@ -451,34 +613,37 @@ class _TimerRingPainter extends CustomPainter {
       ..strokeWidth = 8;
     canvas.drawCircle(center, radius, trackPaint);
 
-    final sweepAngle = 2 * math.pi * progress;
-    final progressPaint = Paint()
-      ..color = const Color(0xFF2E8BFF)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 8
-      ..strokeCap = StrokeCap.round;
+    final clampedProgress = progress.clamp(0.0, 1.0);
+    if (clampedProgress > 0.0) {
+      final sweepAngle = 2 * math.pi * clampedProgress;
+      final progressPaint = Paint()
+        ..color = const Color(0xFF2E8BFF)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 8
+        ..strokeCap = StrokeCap.round;
 
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: radius),
-      -math.pi / 2,
-      sweepAngle,
-      false,
-      progressPaint,
-    );
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        -math.pi / 2,
+        sweepAngle,
+        false,
+        progressPaint,
+      );
 
-    final dotAngle = -math.pi / 2 + sweepAngle;
-    final dotCenter = Offset(
-      center.dx + radius * math.cos(dotAngle),
-      center.dy + radius * math.sin(dotAngle),
-    );
+      final dotAngle = -math.pi / 2 + sweepAngle;
+      final dotCenter = Offset(
+        center.dx + radius * math.cos(dotAngle),
+        center.dy + radius * math.sin(dotAngle),
+      );
 
-    final dotGlowPaint = Paint()
-      ..color = const Color(0xFF2E8BFF)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7);
-    canvas.drawCircle(dotCenter, 6, dotGlowPaint);
+      final dotGlowPaint = Paint()
+        ..color = const Color(0xFF2E8BFF)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7);
+      canvas.drawCircle(dotCenter, 6, dotGlowPaint);
 
-    final dotPaint = Paint()..color = const Color(0xFF72B6FF);
-    canvas.drawCircle(dotCenter, 6, dotPaint);
+      final dotPaint = Paint()..color = const Color(0xFF72B6FF);
+      canvas.drawCircle(dotCenter, 6, dotPaint);
+    }
   }
 
   @override

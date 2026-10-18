@@ -23,16 +23,34 @@ class ZenWizardApp extends StatefulWidget {
 class _ZenWizardAppState extends State<ZenWizardApp> {
   late final SerialPortService _serialService;
   late final ThresholdAlertService _alertService;
+  late final EnvironmentProvider _environmentProvider;
+  late final TimerProvider _timerProvider;
 
   @override
   void initState() {
     super.initState();
     _serialService = SerialPortService();
     _alertService = ThresholdAlertService();
+    _timerProvider = TimerProvider(
+      _serialService,
+      onSessionCompleted: (sessions, focusMinutes) {
+        _environmentProvider.recordProfileSessionStats(sessions, focusMinutes);
+      },
+    );
+    _environmentProvider = EnvironmentProvider(
+      _serialService,
+      _alertService,
+      onActiveProfileChanged: (profile) {
+        _timerProvider.applyProfile(profile);
+      },
+    );
+    _timerProvider.applyProfile(_environmentProvider.activeProfile);
   }
 
   @override
   void dispose() {
+    _environmentProvider.dispose();
+    _timerProvider.dispose();
     _serialService.dispose();
     super.dispose();
   }
@@ -41,12 +59,8 @@ class _ZenWizardAppState extends State<ZenWizardApp> {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(
-          create: (_) => EnvironmentProvider(_serialService, _alertService),
-        ),
-        ChangeNotifierProvider(
-          create: (_) => TimerProvider(_serialService),
-        ),
+        ChangeNotifierProvider.value(value: _environmentProvider),
+        ChangeNotifierProvider.value(value: _timerProvider),
       ],
       child: MaterialApp(
         title: 'ZenWizard',
