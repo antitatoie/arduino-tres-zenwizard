@@ -201,7 +201,7 @@ class SettingsScreen extends StatelessWidget {
                       child: ListView.separated(
                         shrinkWrap: true,
                         itemCount: profiles.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 8),
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (_, index) {
                           final profile = profiles[index];
                           final isActive = profile.id == activeId;

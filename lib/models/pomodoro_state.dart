@@ -14,7 +14,7 @@ class PomodoroState {
     this.remainingSeconds = 25 * 60,
     this.totalSeconds = 25 * 60,
     this.isRunning = false,
-    this.completedSessions = 25,
+    this.completedSessions = 0,
     this.phase = PomodoroPhase.focus,
   });
 
