@@ -265,7 +265,7 @@ class EnvironmentProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateConfig(SettingsConfig newConfig) {
+  Future<void> updateConfig(SettingsConfig newConfig) async {
     _config = newConfig;
     final index = _profiles.indexWhere((p) => p.id == _activeProfileId);
     if (index != -1) {
@@ -281,7 +281,7 @@ class EnvironmentProvider extends ChangeNotifier {
       _latestEvaluation = _alertService.evaluate(_latestTelemetry!, _config);
     }
     notifyListeners();
-    _saveProfilesToPrefs();
+    await _saveProfilesToPrefs();
   }
 
   @override

@@ -640,36 +640,47 @@ class SettingsScreen extends StatelessWidget {
                         }
                       : null,
                 ),
-                Container(
-                  constraints: const BoxConstraints(minHeight: 51),
-                  decoration: const BoxDecoration(
-                    border: Border(
-                      top: BorderSide(
-                        color: Color(0xFF202A39),
-                        width: 1,
-                      ),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Temp Alert Range',
-                        style: TextStyle(
-                          color: Color(0xFFA4AFBF),
-                          fontSize: 12,
-                        ),
-                      ),
-                      Text(
-                        '${config.minTempCelsius.toInt()}°C – ${config.maxTempCelsius.toInt()}°C',
-                        style: const TextStyle(
-                          color: Color(0xFF4BA2FF),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
+                _StepperRow(
+                  label: 'Min Temp Alert',
+                  valueText: '${config.minTempCelsius.toInt()}°C',
+                  showTopBorder: true,
+                  onDecrement: config.minTempCelsius > 10.0
+                      ? () {
+                          final next = config.minTempCelsius - 1.0;
+                          envProvider.updateConfig(
+                            config.copyWith(minTempCelsius: next),
+                          );
+                        }
+                      : null,
+                  onIncrement: config.minTempCelsius < config.maxTempCelsius - 1.0
+                      ? () {
+                          final next = config.minTempCelsius + 1.0;
+                          envProvider.updateConfig(
+                            config.copyWith(minTempCelsius: next),
+                          );
+                        }
+                      : null,
+                ),
+                _StepperRow(
+                  label: 'Max Temp Alert',
+                  valueText: '${config.maxTempCelsius.toInt()}°C',
+                  showTopBorder: true,
+                  onDecrement: config.maxTempCelsius > config.minTempCelsius + 1.0
+                      ? () {
+                          final next = config.maxTempCelsius - 1.0;
+                          envProvider.updateConfig(
+                            config.copyWith(maxTempCelsius: next),
+                          );
+                        }
+                      : null,
+                  onIncrement: config.maxTempCelsius < 40.0
+                      ? () {
+                          final next = config.maxTempCelsius + 1.0;
+                          envProvider.updateConfig(
+                            config.copyWith(maxTempCelsius: next),
+                          );
+                        }
+                      : null,
                 ),
               ],
             ),
