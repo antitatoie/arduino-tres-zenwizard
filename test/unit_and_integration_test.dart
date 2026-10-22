@@ -118,7 +118,7 @@ void main() {
       expect(eval.isLightOptimal, isFalse);
       expect(eval.isTempOptimal, isFalse);
       expect(eval.isHumidityOptimal, isFalse);
-      expect(eval.lightStatusMessage, contains('Low lighting warning'));
+      expect(eval.lightStatusMessage, contains('Low light warning'));
     });
   });
 

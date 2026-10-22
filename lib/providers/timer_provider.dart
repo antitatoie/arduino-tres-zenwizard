@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import '../models/pomodoro_state.dart';
 import '../models/user_profile.dart';
 import '../services/serial_port_service.dart';
@@ -123,9 +124,13 @@ class TimerProvider extends ChangeNotifier {
         _phase = PomodoroPhase.shortBreak;
         _remainingSeconds = _breakDurationSeconds;
       }
+      // Set Arduino RGB LED to calm solid Blue during Pomodoro break
+      _serialService.sendCommand('CMD:LED:BLUE');
     } else {
       _phase = PomodoroPhase.focus;
       _remainingSeconds = _workDurationSeconds;
+      // Return Arduino RGB LED to ambient monitoring mode
+      _serialService.sendCommand('CMD:POMODORO_STOP');
     }
   }
 
@@ -141,7 +146,15 @@ class TimerProvider extends ChangeNotifier {
     // Play pleasant in-app chime notification
     _playChime();
 
-    // Trigger non-blocking RGB LED flash + Active Buzzer on Arduino Uno
+    // Vibrate device on phase completion
+    _vibrate();
+
+    // If entering break after focus, send break indicator command
+    if (_phase == PomodoroPhase.focus) {
+      _serialService.sendCommand('CMD:LED:BLUE');
+    }
+
+    // Trigger non-blocking alert on Arduino Uno
     _serialService.sendCommand('CMD:POMODORO_ALERT');
     notifyListeners();
   }
@@ -177,6 +190,14 @@ class TimerProvider extends ChangeNotifier {
       _remainingSeconds = _longBreakDurationSeconds;
     }
     notifyListeners();
+  }
+
+  Future<void> _vibrate() async {
+    try {
+      await HapticFeedback.heavyImpact();
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      await HapticFeedback.heavyImpact();
+    } catch (_) {}
   }
 
   Future<void> _playChime() async {

@@ -137,7 +137,10 @@ class EnvironmentProvider extends ChangeNotifier {
     _config = profile.settings;
     if (syncSerial) {
       _serialService.sendCommand(
-        'CMD:LUX_MIN:${_config.lightAlertThresholdLux.toStringAsFixed(0)}',
+        'CMD:LUX_MIN:${_config.minLightLux.toStringAsFixed(0)}',
+      );
+      _serialService.sendCommand(
+        _config.isBuzzerMuted ? 'CMD:BUZZER:MUTE' : 'CMD:BUZZER:UNMUTE',
       );
     }
     if (_latestTelemetry != null) {
@@ -286,9 +289,12 @@ class EnvironmentProvider extends ChangeNotifier {
       nextList[index] = _profiles[index].copyWith(settings: newConfig);
       _profiles = nextList;
     }
-    // Sync new Lux threshold to Arduino Uno hardware LED
+    // Sync settings to Arduino Uno hardware (Lux + Buzzer Mute)
     _serialService.sendCommand(
-      'CMD:LUX_MIN:${newConfig.lightAlertThresholdLux.toStringAsFixed(0)}',
+      'CMD:LUX_MIN:${newConfig.minLightLux.toStringAsFixed(0)}',
+    );
+    _serialService.sendCommand(
+      newConfig.isBuzzerMuted ? 'CMD:BUZZER:MUTE' : 'CMD:BUZZER:UNMUTE',
     );
     if (_latestTelemetry != null) {
       _latestEvaluation = _alertService.evaluate(_latestTelemetry!, _config);
