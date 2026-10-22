@@ -349,9 +349,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         Text(
                           timerProvider.phase == PomodoroPhase.focus
                               ? 'FOCUS'
-                              : 'BREAK',
-                          style: const TextStyle(
-                            color: Color(0xFF718096),
+                              : (timerProvider.phase == PomodoroPhase.longBreak
+                                  ? 'LONG BREAK'
+                                  : 'SHORT BREAK'),
+                          style: TextStyle(
+                            color: timerProvider.phase == PomodoroPhase.longBreak
+                                ? const Color(0xFF10B981)
+                                : const Color(0xFF718096),
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 2.0,

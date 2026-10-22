@@ -12,10 +12,11 @@ class TimerProvider extends ChangeNotifier {
 
   int _workDurationSeconds = 25 * 60;
   int _breakDurationSeconds = 5 * 60;
+  int _longBreakDurationSeconds = 15 * 60;
   int _remainingSeconds = 25 * 60;
   bool _isRunning = false;
-  int _completedSessions = 25;
-  double _totalFocusMinutes = 625.0;
+  int _completedSessions = 0;
+  double _totalFocusMinutes = 0.0;
   PomodoroPhase _phase = PomodoroPhase.focus;
 
   TimerProvider(this._serialService, {this.onSessionCompleted});
@@ -23,14 +24,27 @@ class TimerProvider extends ChangeNotifier {
   int get remainingSeconds => _remainingSeconds;
   int get workDurationSeconds => _workDurationSeconds;
   int get breakDurationSeconds => _breakDurationSeconds;
+  int get longBreakDurationSeconds => _longBreakDurationSeconds;
   bool get isRunning => _isRunning;
   int get completedSessions => _completedSessions;
   double get totalFocusMinutes => _totalFocusMinutes;
   double get totalFocusHours => _totalFocusMinutes / 60.0;
   PomodoroPhase get phase => _phase;
 
-  int get currentPhaseTotalSeconds =>
-      _phase == PomodoroPhase.focus ? _workDurationSeconds : _breakDurationSeconds;
+  int get cycleSessionNumber => ((_completedSessions % 4) == 0 && _completedSessions > 0)
+      ? 4
+      : (_completedSessions % 4);
+
+  int get currentPhaseTotalSeconds {
+    switch (_phase) {
+      case PomodoroPhase.focus:
+        return _workDurationSeconds;
+      case PomodoroPhase.shortBreak:
+        return _breakDurationSeconds;
+      case PomodoroPhase.longBreak:
+        return _longBreakDurationSeconds;
+    }
+  }
 
   PomodoroState get state => PomodoroState(
         remainingSeconds: _remainingSeconds,
@@ -50,6 +64,7 @@ class TimerProvider extends ChangeNotifier {
     _phase = PomodoroPhase.focus;
     _workDurationSeconds = profile.settings.pomodoroDurationMinutes * 60;
     _breakDurationSeconds = profile.settings.breakDurationMinutes * 60;
+    _longBreakDurationSeconds = profile.settings.longBreakDurationMinutes * 60;
     _remainingSeconds = _workDurationSeconds;
     _completedSessions = profile.completedSessions;
     _totalFocusMinutes = profile.totalFocusMinutes;
@@ -94,8 +109,14 @@ class TimerProvider extends ChangeNotifier {
 
   void _advancePhaseAndResetRemaining() {
     if (_phase == PomodoroPhase.focus) {
-      _phase = PomodoroPhase.shortBreak;
-      _remainingSeconds = _breakDurationSeconds;
+      // Long break every 4 completed sessions
+      if (_completedSessions > 0 && _completedSessions % 4 == 0) {
+        _phase = PomodoroPhase.longBreak;
+        _remainingSeconds = _longBreakDurationSeconds;
+      } else {
+        _phase = PomodoroPhase.shortBreak;
+        _remainingSeconds = _breakDurationSeconds;
+      }
     } else {
       _phase = PomodoroPhase.focus;
       _remainingSeconds = _workDurationSeconds;
@@ -137,6 +158,14 @@ class TimerProvider extends ChangeNotifier {
     _breakDurationSeconds = minutes * 60;
     if (!_isRunning && _phase == PomodoroPhase.shortBreak) {
       _remainingSeconds = _breakDurationSeconds;
+    }
+    notifyListeners();
+  }
+
+  void setLongBreakDurationMinutes(int minutes) {
+    _longBreakDurationSeconds = minutes * 60;
+    if (!_isRunning && _phase == PomodoroPhase.longBreak) {
+      _remainingSeconds = _longBreakDurationSeconds;
     }
     notifyListeners();
   }

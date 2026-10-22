@@ -1,6 +1,7 @@
 enum PomodoroPhase {
   focus,
   shortBreak,
+  longBreak,
 }
 
 class PomodoroState {

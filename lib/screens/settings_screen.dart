@@ -620,6 +620,29 @@ class SettingsScreen extends StatelessWidget {
                       : null,
                 ),
                 _StepperRow(
+                  label: 'Long Break Duration',
+                  valueText: '${config.longBreakDurationMinutes} min',
+                  showTopBorder: true,
+                  onDecrement: config.longBreakDurationMinutes > 5
+                      ? () {
+                          final next = config.longBreakDurationMinutes - 5;
+                          envProvider.updateConfig(
+                            config.copyWith(longBreakDurationMinutes: next),
+                          );
+                          timerProvider.setLongBreakDurationMinutes(next);
+                        }
+                      : null,
+                  onIncrement: config.longBreakDurationMinutes < 60
+                      ? () {
+                          final next = config.longBreakDurationMinutes + 5;
+                          envProvider.updateConfig(
+                            config.copyWith(longBreakDurationMinutes: next),
+                          );
+                          timerProvider.setLongBreakDurationMinutes(next);
+                        }
+                      : null,
+                ),
+                _StepperRow(
                   label: 'Light Alert Threshold',
                   valueText: '< ${config.lightAlertThresholdLux.toInt()} lux',
                   showTopBorder: true,
