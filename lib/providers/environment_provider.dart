@@ -53,6 +53,7 @@ class EnvironmentProvider extends ChangeNotifier {
         ),
         completedSessions: 25,
         totalFocusMinutes: 625.0,
+        weeklySessions: [3, 4, 3, 5, 6, 3, 1],
       ),
       UserProfile(
         id: 'profile_timothy',
@@ -67,6 +68,7 @@ class EnvironmentProvider extends ChangeNotifier {
         ),
         completedSessions: 18,
         totalFocusMinutes: 540.0,
+        weeklySessions: [2, 3, 4, 3, 4, 2, 0],
       ),
       UserProfile(
         id: 'profile_marcus',
@@ -81,6 +83,7 @@ class EnvironmentProvider extends ChangeNotifier {
         ),
         completedSessions: 14,
         totalFocusMinutes: 280.0,
+        weeklySessions: [1, 2, 2, 3, 4, 1, 1],
       ),
     ];
   }
@@ -134,7 +137,10 @@ class EnvironmentProvider extends ChangeNotifier {
     _config = profile.settings;
     if (syncSerial) {
       _serialService.sendCommand(
-        'CMD:LUX_MIN:${_config.lightAlertThresholdLux.toStringAsFixed(0)}',
+        'CMD:LUX_MIN:${_config.minLightLux.toStringAsFixed(0)}',
+      );
+      _serialService.sendCommand(
+        _config.isBuzzerMuted ? 'CMD:BUZZER:MUTE' : 'CMD:BUZZER:UNMUTE',
       );
     }
     if (_latestTelemetry != null) {
@@ -223,9 +229,19 @@ class EnvironmentProvider extends ChangeNotifier {
   ) async {
     final index = _profiles.indexWhere((p) => p.id == _activeProfileId);
     if (index == -1) return;
+
+    // DateTime.weekday: 1 (Mon) to 7 (Sun) -> index 0 to 6
+    final currentDayIndex = (DateTime.now().weekday - 1).clamp(0, 6);
+    final currentWeekly = List<int>.from(_profiles[index].weeklySessions);
+    while (currentWeekly.length < 7) {
+      currentWeekly.add(0);
+    }
+    currentWeekly[currentDayIndex] = currentWeekly[currentDayIndex] + 1;
+
     final updated = _profiles[index].copyWith(
       completedSessions: completedSessions,
       totalFocusMinutes: totalFocusMinutes,
+      weeklySessions: currentWeekly,
     );
     final nextList = List<UserProfile>.from(_profiles);
     nextList[index] = updated;
@@ -265,7 +281,7 @@ class EnvironmentProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateConfig(SettingsConfig newConfig) {
+  Future<void> updateConfig(SettingsConfig newConfig) async {
     _config = newConfig;
     final index = _profiles.indexWhere((p) => p.id == _activeProfileId);
     if (index != -1) {
@@ -273,15 +289,18 @@ class EnvironmentProvider extends ChangeNotifier {
       nextList[index] = _profiles[index].copyWith(settings: newConfig);
       _profiles = nextList;
     }
-    // Sync new Lux threshold to Arduino Uno hardware LED
+    // Sync settings to Arduino Uno hardware (Lux + Buzzer Mute)
     _serialService.sendCommand(
-      'CMD:LUX_MIN:${newConfig.lightAlertThresholdLux.toStringAsFixed(0)}',
+      'CMD:LUX_MIN:${newConfig.minLightLux.toStringAsFixed(0)}',
+    );
+    _serialService.sendCommand(
+      newConfig.isBuzzerMuted ? 'CMD:BUZZER:MUTE' : 'CMD:BUZZER:UNMUTE',
     );
     if (_latestTelemetry != null) {
       _latestEvaluation = _alertService.evaluate(_latestTelemetry!, _config);
     }
     notifyListeners();
-    _saveProfilesToPrefs();
+    await _saveProfilesToPrefs();
   }
 
   @override

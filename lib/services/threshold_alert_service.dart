@@ -17,14 +17,24 @@ class EnvironmentEvaluation {
 
 class ThresholdAlertService {
   EnvironmentEvaluation evaluate(TelemetryData data, SettingsConfig config) {
-    final isLightOk = data.lux >= config.lightAlertThresholdLux;
+    final isLightOk =
+        data.lux >= config.minLightLux && data.lux <= config.maxLightLux;
     final isTempOk = data.temperature >= config.minTempCelsius &&
         data.temperature <= config.maxTempCelsius;
-    final isHumOk = data.humidity >= 30.0 && data.humidity <= 65.0;
+    final isHumOk = data.humidity >= config.minHumidity &&
+        data.humidity <= config.maxHumidity;
 
-    final lightMsg = isLightOk
-        ? 'Lighting optimal — ${data.lux.toStringAsFixed(0)} lx detected'
-        : 'Low lighting warning — ${data.lux.toStringAsFixed(0)} lx (< ${config.lightAlertThresholdLux.toInt()} lx)';
+    final String lightMsg;
+    if (data.lux < config.minLightLux) {
+      lightMsg =
+          'Low light warning — ${data.lux.toStringAsFixed(0)} lx (< ${config.minLightLux.toInt()} lx)';
+    } else if (data.lux > config.maxLightLux) {
+      lightMsg =
+          'Excess light warning — ${data.lux.toStringAsFixed(0)} lx (> ${config.maxLightLux.toInt()} lx)';
+    } else {
+      lightMsg =
+          'Lighting optimal — ${data.lux.toStringAsFixed(0)} lx detected';
+    }
 
     return EnvironmentEvaluation(
       isLightOptimal: isLightOk,

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:posture_wizard/main.dart';
+import 'package:zen_wizard/main.dart';
 
 void main() {
   testWidgets('ZenWizard UI loads smoke test', (WidgetTester tester) async {

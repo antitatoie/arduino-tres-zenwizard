@@ -1,5 +1,5 @@
 /**
- * ZenWizard / PostureWizard Firmware (v2.4.1)
+ * ZenWizard / ZenWizard Firmware (v2.4.1)
  * Team Arduino Tres - Arduino Uno R3 (CH340)
  * Non-blocking Cooperative Multitasking Architecture
  */
@@ -56,13 +56,15 @@ float lastValidTemp = 23.0;
 float lastValidHum  = 50.0;
 bool dhtInitialized = false;
 
-// Configurable threshold (matches UI default: < 300 lux)
+// Configurable thresholds & settings
 float luxThreshold = 300.0;
+bool buzzerMuted = false;
 
 // Actuator State Machine
 enum SystemMode {
   MODE_AMBIENT_MONITOR,
-  MODE_POMODORO_OVERRIDE
+  MODE_POMODORO_OVERRIDE,
+  MODE_POMODORO_BREAK
 };
 
 SystemMode currentMode = MODE_AMBIENT_MONITOR;
@@ -87,14 +89,18 @@ void setRgbColor(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 void setBuzzer(bool active) {
-  digitalWrite(PIN_BUZZER, active ? HIGH : LOW);
+  if (buzzerMuted) {
+    digitalWrite(PIN_BUZZER, LOW);
+  } else {
+    digitalWrite(PIN_BUZZER, active ? HIGH : LOW);
+  }
 }
 
 /**
  * Converts 10-bit ADC (0-1023) to Lux using voltage divider & power-law curve:
  * Lux = Scalar * (R_ldr ^ Exponent)
  */
-// Replace adcToLux() in posture_wizard_firmware.ino with this:
+// Replace adcToLux() in zen_wizard_firmware.ino with this:
 float adcToLux(int rawAdc) {
   rawAdc = constrain(rawAdc, 0, 1023);
   float ratio = rawAdc / 1023.0;
@@ -128,6 +134,11 @@ void processCommand(char* cmd) {
     alertPulseState = true;
     setRgbColor(0, 180, 255); // Wizard Cyan/Blue flash
     setBuzzer(true);
+  } else if (strcmp(cmd, "CMD:LED:BLUE") == 0 ||
+             strcmp(cmd, "CMD:POMODORO_BREAK") == 0) {
+    currentMode = MODE_POMODORO_BREAK;
+    setBuzzer(false);
+    setRgbColor(0, 80, 255); // Solid calm blue during break
   } else if (strcmp(cmd, "CMD:POMODORO_STOP") == 0 ||
              strcmp(cmd, "ALERT_STOP") == 0 ||
              strcmp(cmd, "RESET") == 0) {
@@ -138,6 +149,11 @@ void processCommand(char* cmd) {
     if (parsedLux >= 50.0 && parsedLux <= 1500.0) {
       luxThreshold = parsedLux;
     }
+  } else if (strcmp(cmd, "CMD:BUZZER:MUTE") == 0) {
+    buzzerMuted = true;
+    setBuzzer(false);
+  } else if (strcmp(cmd, "CMD:BUZZER:UNMUTE") == 0) {
+    buzzerMuted = false;
   }
 }
 
@@ -213,6 +229,10 @@ void updateActuatorStateMachine(unsigned long now) {
         setBuzzer(false);
       }
     }
+  } else if (currentMode == MODE_POMODORO_BREAK) {
+    // b) Pomodoro Break: solid calm blue LED, no buzzer
+    setRgbColor(0, 80, 255);
+    setBuzzer(false);
   } else {
     // b) Low Light Warning Mode (Ambient Monitor):
     // Green = Optimal (>= threshold), Red + periodic gentle short beep = Low Light (< threshold)

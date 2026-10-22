@@ -620,56 +620,175 @@ class SettingsScreen extends StatelessWidget {
                       : null,
                 ),
                 _StepperRow(
-                  label: 'Light Alert Threshold',
-                  valueText: '< ${config.lightAlertThresholdLux.toInt()} lux',
+                  label: 'Long Break Duration',
+                  valueText: '${config.longBreakDurationMinutes} min',
                   showTopBorder: true,
-                  onDecrement: config.lightAlertThresholdLux > 50
+                  onDecrement: config.longBreakDurationMinutes > 5
                       ? () {
-                          final next = config.lightAlertThresholdLux - 25.0;
+                          final next = config.longBreakDurationMinutes - 5;
                           envProvider.updateConfig(
-                            config.copyWith(lightAlertThresholdLux: next),
+                            config.copyWith(longBreakDurationMinutes: next),
+                          );
+                          timerProvider.setLongBreakDurationMinutes(next);
+                        }
+                      : null,
+                  onIncrement: config.longBreakDurationMinutes < 60
+                      ? () {
+                          final next = config.longBreakDurationMinutes + 5;
+                          envProvider.updateConfig(
+                            config.copyWith(longBreakDurationMinutes: next),
+                          );
+                          timerProvider.setLongBreakDurationMinutes(next);
+                        }
+                      : null,
+                ),
+                _StepperRow(
+                  label: 'Min Light Alert',
+                  valueText: '< ${config.minLightLux.toInt()} lux',
+                  showTopBorder: true,
+                  onDecrement: config.minLightLux > 50
+                      ? () {
+                          final next = config.minLightLux - 25.0;
+                          envProvider.updateConfig(
+                            config.copyWith(minLightLux: next),
                           );
                         }
                       : null,
-                  onIncrement: config.lightAlertThresholdLux < 1000
+                  onIncrement: config.minLightLux < config.maxLightLux - 25.0
                       ? () {
-                          final next = config.lightAlertThresholdLux + 25.0;
+                          final next = config.minLightLux + 25.0;
                           envProvider.updateConfig(
-                            config.copyWith(lightAlertThresholdLux: next),
+                            config.copyWith(minLightLux: next),
                           );
                         }
                       : null,
                 ),
-                Container(
-                  constraints: const BoxConstraints(minHeight: 51),
-                  decoration: const BoxDecoration(
-                    border: Border(
-                      top: BorderSide(
-                        color: Color(0xFF202A39),
-                        width: 1,
-                      ),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Temp Alert Range',
-                        style: TextStyle(
-                          color: Color(0xFFA4AFBF),
-                          fontSize: 12,
-                        ),
-                      ),
-                      Text(
-                        '${config.minTempCelsius.toInt()}°C – ${config.maxTempCelsius.toInt()}°C',
-                        style: const TextStyle(
-                          color: Color(0xFF4BA2FF),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
+                _StepperRow(
+                  label: 'Max Light Alert',
+                  valueText: '> ${config.maxLightLux.toInt()} lux',
+                  showTopBorder: true,
+                  onDecrement: config.maxLightLux > config.minLightLux + 25.0
+                      ? () {
+                          final next = config.maxLightLux - 25.0;
+                          envProvider.updateConfig(
+                            config.copyWith(maxLightLux: next),
+                          );
+                        }
+                      : null,
+                  onIncrement: config.maxLightLux < 2000
+                      ? () {
+                          final next = config.maxLightLux + 25.0;
+                          envProvider.updateConfig(
+                            config.copyWith(maxLightLux: next),
+                          );
+                        }
+                      : null,
+                ),
+                _StepperRow(
+                  label: 'Min Temp Alert',
+                  valueText: '${config.minTempCelsius.toInt()}°C',
+                  showTopBorder: true,
+                  onDecrement: config.minTempCelsius > 10.0
+                      ? () {
+                          final next = config.minTempCelsius - 1.0;
+                          envProvider.updateConfig(
+                            config.copyWith(minTempCelsius: next),
+                          );
+                        }
+                      : null,
+                  onIncrement: config.minTempCelsius < config.maxTempCelsius - 1.0
+                      ? () {
+                          final next = config.minTempCelsius + 1.0;
+                          envProvider.updateConfig(
+                            config.copyWith(minTempCelsius: next),
+                          );
+                        }
+                      : null,
+                ),
+                _StepperRow(
+                  label: 'Max Temp Alert',
+                  valueText: '${config.maxTempCelsius.toInt()}°C',
+                  showTopBorder: true,
+                  onDecrement: config.maxTempCelsius > config.minTempCelsius + 1.0
+                      ? () {
+                          final next = config.maxTempCelsius - 1.0;
+                          envProvider.updateConfig(
+                            config.copyWith(maxTempCelsius: next),
+                          );
+                        }
+                      : null,
+                  onIncrement: config.maxTempCelsius < 40.0
+                      ? () {
+                          final next = config.maxTempCelsius + 1.0;
+                          envProvider.updateConfig(
+                            config.copyWith(maxTempCelsius: next),
+                          );
+                        }
+                      : null,
+                ),
+                _StepperRow(
+                  label: 'Min Humidity Alert',
+                  valueText: '< ${config.minHumidity.toInt()}%',
+                  showTopBorder: true,
+                  onDecrement: config.minHumidity > 10.0
+                      ? () {
+                          final next = config.minHumidity - 5.0;
+                          envProvider.updateConfig(
+                            config.copyWith(minHumidity: next),
+                          );
+                        }
+                      : null,
+                  onIncrement: config.minHumidity < config.maxHumidity - 5.0
+                      ? () {
+                          final next = config.minHumidity + 5.0;
+                          envProvider.updateConfig(
+                            config.copyWith(minHumidity: next),
+                          );
+                        }
+                      : null,
+                ),
+                _StepperRow(
+                  label: 'Max Humidity Alert',
+                  valueText: '> ${config.maxHumidity.toInt()}%',
+                  showTopBorder: true,
+                  onDecrement: config.maxHumidity > config.minHumidity + 5.0
+                      ? () {
+                          final next = config.maxHumidity - 5.0;
+                          envProvider.updateConfig(
+                            config.copyWith(maxHumidity: next),
+                          );
+                        }
+                      : null,
+                  onIncrement: config.maxHumidity < 90.0
+                      ? () {
+                          final next = config.maxHumidity + 5.0;
+                          envProvider.updateConfig(
+                            config.copyWith(maxHumidity: next),
+                          );
+                        }
+                      : null,
+                ),
+                _SwitchRow(
+                  label: 'Mute Arduino Buzzer',
+                  subtitle: 'Silence hardware beep alerts',
+                  value: config.isBuzzerMuted,
+                  showTopBorder: true,
+                  onChanged: (muted) {
+                    envProvider.updateConfig(
+                      config.copyWith(isBuzzerMuted: muted),
+                    );
+                  },
+                ),
+                _SwitchRow(
+                  label: 'Device Vibration',
+                  subtitle: 'Vibrate on Pomodoro timer finish',
+                  value: config.isVibrationEnabled,
+                  showTopBorder: true,
+                  onChanged: (vibe) {
+                    envProvider.updateConfig(
+                      config.copyWith(isVibrationEnabled: vibe),
+                    );
+                  },
                 ),
               ],
             ),
@@ -862,6 +981,75 @@ class _StepButton extends StatelessWidget {
           size: 14,
           color: enabled ? const Color(0xFF8A99AD) : const Color(0xFF434E61),
         ),
+      ),
+    );
+  }
+}
+
+class _SwitchRow extends StatelessWidget {
+  final String label;
+  final String subtitle;
+  final bool value;
+  final bool showTopBorder;
+  final ValueChanged<bool> onChanged;
+
+  const _SwitchRow({
+    required this.label,
+    required this.subtitle,
+    required this.value,
+    required this.showTopBorder,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 56),
+      decoration: BoxDecoration(
+        border: showTopBorder
+            ? const Border(
+                top: BorderSide(
+                  color: Color(0xFF202A39),
+                  width: 1,
+                ),
+              )
+            : null,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Color(0xFFA4AFBF),
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: Color(0xFF647188),
+                    fontSize: 10,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: value,
+            activeThumbColor: Colors.white,
+            activeTrackColor: const Color(0xFF2E8BFF),
+            inactiveThumbColor: const Color(0xFF8A99AD),
+            inactiveTrackColor: const Color(0xFF1B2330),
+            onChanged: onChanged,
+          ),
+        ],
       ),
     );
   }
