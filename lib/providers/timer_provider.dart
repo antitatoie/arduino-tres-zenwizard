@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import '../models/pomodoro_state.dart';
 import '../models/user_profile.dart';
@@ -8,6 +9,7 @@ class TimerProvider extends ChangeNotifier {
   final SerialPortService _serialService;
   final void Function(int completedSessions, double totalFocusMinutes)?
       onSessionCompleted;
+  final AudioPlayer? _audioPlayer;
   Timer? _timer;
 
   int _workDurationSeconds = 25 * 60;
@@ -19,7 +21,11 @@ class TimerProvider extends ChangeNotifier {
   double _totalFocusMinutes = 0.0;
   PomodoroPhase _phase = PomodoroPhase.focus;
 
-  TimerProvider(this._serialService, {this.onSessionCompleted});
+  TimerProvider(
+    this._serialService, {
+    this.onSessionCompleted,
+    AudioPlayer? audioPlayer,
+  }) : _audioPlayer = audioPlayer;
 
   int get remainingSeconds => _remainingSeconds;
   int get workDurationSeconds => _workDurationSeconds;
@@ -132,6 +138,9 @@ class TimerProvider extends ChangeNotifier {
       _totalFocusMinutes += (_workDurationSeconds / 60.0);
       onSessionCompleted?.call(_completedSessions, _totalFocusMinutes);
     }
+    // Play pleasant in-app chime notification
+    _playChime();
+
     // Trigger non-blocking RGB LED flash + Active Buzzer on Arduino Uno
     _serialService.sendCommand('CMD:POMODORO_ALERT');
     notifyListeners();
@@ -170,9 +179,20 @@ class TimerProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _playChime() async {
+    if (_audioPlayer == null) return;
+    try {
+      await _audioPlayer.stop();
+      await _audioPlayer.play(AssetSource('audio/chime.wav'), volume: 0.8);
+    } catch (e) {
+      debugPrint('Failed to play in-app chime: $e');
+    }
+  }
+
   @override
   void dispose() {
     _timer?.cancel();
+    _audioPlayer?.dispose();
     super.dispose();
   }
 }

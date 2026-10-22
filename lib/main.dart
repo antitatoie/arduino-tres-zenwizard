@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/environment_provider.dart';
@@ -33,6 +34,7 @@ class _ZenWizardAppState extends State<ZenWizardApp> {
     _alertService = ThresholdAlertService();
     _timerProvider = TimerProvider(
       _serialService,
+      audioPlayer: AudioPlayer(),
       onSessionCompleted: (sessions, focusMinutes) {
         _environmentProvider.recordProfileSessionStats(sessions, focusMinutes);
       },

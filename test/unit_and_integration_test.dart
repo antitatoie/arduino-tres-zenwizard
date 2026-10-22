@@ -10,6 +10,8 @@ import 'package:posture_wizard/services/threshold_alert_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   setUp(() {
     SharedPreferences.setMockInitialValues({});
   });
@@ -123,7 +125,7 @@ void main() {
   group('TimerProvider & Long Break Phase Tests', () {
     test('Timer advances to shortBreak on normal session completion and longBreak on 4th session', () {
       final serialService = SerialPortService();
-      final timerProvider = TimerProvider(serialService);
+      final timerProvider = TimerProvider(serialService, audioPlayer: null);
 
       // Apply a test profile
       const testProfile = UserProfile(
