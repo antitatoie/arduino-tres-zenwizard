@@ -1,12 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:posture_wizard/models/pomodoro_state.dart';
-import 'package:posture_wizard/models/settings_config.dart';
-import 'package:posture_wizard/models/telemetry_data.dart';
-import 'package:posture_wizard/models/user_profile.dart';
-import 'package:posture_wizard/providers/environment_provider.dart';
-import 'package:posture_wizard/providers/timer_provider.dart';
-import 'package:posture_wizard/services/serial_port_service.dart';
-import 'package:posture_wizard/services/threshold_alert_service.dart';
+import 'package:zen_wizard/models/pomodoro_state.dart';
+import 'package:zen_wizard/models/settings_config.dart';
+import 'package:zen_wizard/models/telemetry_data.dart';
+import 'package:zen_wizard/models/user_profile.dart';
+import 'package:zen_wizard/providers/environment_provider.dart';
+import 'package:zen_wizard/providers/timer_provider.dart';
+import 'package:zen_wizard/services/serial_port_service.dart';
+import 'package:zen_wizard/services/threshold_alert_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {

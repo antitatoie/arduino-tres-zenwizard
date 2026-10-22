@@ -4,10 +4,10 @@ Smart desk ergonomics & workspace environment monitor built with Flutter, Dart, 
 
 ### Expected Project Structure (template only subject to change)
 ```text
-posture_wizard/
+zen_wizard/
 ├── firmware/                        # Arduino sketches & hardware circuit diagrams
-│   └── posture_wizard_firmware/
-│       └── posture_wizard_firmware.ino
+│   └── zen_wizard_firmware/
+│       └── zen_wizard_firmware.ino
 ├── lib/
 │   ├── main.dart
 │   ├── models/                    # TelemetryData, PomodoroState, SettingsConfig

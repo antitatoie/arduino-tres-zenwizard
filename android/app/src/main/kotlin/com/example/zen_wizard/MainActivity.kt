@@ -1,4 +1,4 @@
-package com.example.posture_wizard
+package com.example.zen_wizard
 
 import io.flutter.embedding.android.FlutterActivity
 

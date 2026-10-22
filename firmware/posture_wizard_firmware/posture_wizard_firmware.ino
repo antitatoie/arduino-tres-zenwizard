@@ -1,5 +1,5 @@
 /**
- * ZenWizard / PostureWizard Firmware (v2.4.1)
+ * ZenWizard / ZenWizard Firmware (v2.4.1)
  * Team Arduino Tres - Arduino Uno R3 (CH340)
  * Non-blocking Cooperative Multitasking Architecture
  */
@@ -94,7 +94,7 @@ void setBuzzer(bool active) {
  * Converts 10-bit ADC (0-1023) to Lux using voltage divider & power-law curve:
  * Lux = Scalar * (R_ldr ^ Exponent)
  */
-// Replace adcToLux() in posture_wizard_firmware.ino with this:
+// Replace adcToLux() in zen_wizard_firmware.ino with this:
 float adcToLux(int rawAdc) {
   rawAdc = constrain(rawAdc, 0, 1023);
   float ratio = rawAdc / 1023.0;

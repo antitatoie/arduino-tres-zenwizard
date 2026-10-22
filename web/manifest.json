@@ -1,6 +1,6 @@
 {
-    "name": "posture_wizard",
-    "short_name": "posture_wizard",
+    "name": "zen_wizard",
+    "short_name": "zen_wizard",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
