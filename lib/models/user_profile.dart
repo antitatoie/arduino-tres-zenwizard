@@ -7,6 +7,7 @@ class UserProfile {
   final SettingsConfig settings;
   final int completedSessions;
   final double totalFocusMinutes;
+  final List<int> weeklySessions;
 
   const UserProfile({
     required this.id,
@@ -15,6 +16,7 @@ class UserProfile {
     this.settings = const SettingsConfig(),
     this.completedSessions = 0,
     this.totalFocusMinutes = 0.0,
+    this.weeklySessions = const [0, 0, 0, 0, 0, 0, 0],
   });
 
   String get initials {
@@ -36,6 +38,7 @@ class UserProfile {
     SettingsConfig? settings,
     int? completedSessions,
     double? totalFocusMinutes,
+    List<int>? weeklySessions,
   }) {
     return UserProfile(
       id: id ?? this.id,
@@ -44,6 +47,7 @@ class UserProfile {
       settings: settings ?? this.settings,
       completedSessions: completedSessions ?? this.completedSessions,
       totalFocusMinutes: totalFocusMinutes ?? this.totalFocusMinutes,
+      weeklySessions: weeklySessions ?? this.weeklySessions,
     );
   }
 
@@ -55,6 +59,7 @@ class UserProfile {
       'settings': settings.toJson(),
       'completedSessions': completedSessions,
       'totalFocusMinutes': totalFocusMinutes,
+      'weeklySessions': weeklySessions,
     };
   }
 
@@ -70,6 +75,10 @@ class UserProfile {
           : const SettingsConfig(),
       completedSessions: (json['completedSessions'] as num?)?.toInt() ?? 0,
       totalFocusMinutes: (json['totalFocusMinutes'] as num?)?.toDouble() ?? 0.0,
+      weeklySessions: (json['weeklySessions'] as List<dynamic>?)
+              ?.map((e) => (e as num).toInt())
+              .toList() ??
+          const [0, 0, 0, 0, 0, 0, 0],
     );
   }
 }

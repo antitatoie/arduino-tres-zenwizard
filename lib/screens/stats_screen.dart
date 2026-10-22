@@ -8,7 +8,6 @@ import '../providers/timer_provider.dart';
 class StatsScreen extends StatelessWidget {
   const StatsScreen({super.key});
 
-  static const List<int> _bars = [52, 68, 43, 77, 100, 60, 36];
   static const List<String> _days = [
     'Mon',
     'Tue',
@@ -24,6 +23,28 @@ class StatsScreen extends StatelessWidget {
     final envProvider = context.watch<EnvironmentProvider>();
     final timerProvider = context.watch<TimerProvider>();
     final history = envProvider.history;
+    final activeProfile = envProvider.activeProfile;
+
+    final weeklySessions = activeProfile.weeklySessions;
+    final int maxWeeklySession = weeklySessions.isEmpty
+        ? 1
+        : weeklySessions.reduce((a, b) => a > b ? a : b);
+    final double maxBarScale =
+        maxWeeklySession > 0 ? maxWeeklySession.toDouble() : 1.0;
+
+    int bestDayIndex = 0;
+    int bestDayCount = 0;
+    for (int i = 0; i < weeklySessions.length && i < _days.length; i++) {
+      if (weeklySessions[i] > bestDayCount) {
+        bestDayCount = weeklySessions[i];
+        bestDayIndex = i;
+      }
+    }
+    final String bestDayLabel = _days[bestDayIndex];
+    final String bestDaySub =
+        bestDayCount == 1 ? '1 session' : '$bestDayCount sessions';
+
+    final int currentWeekdayIndex = (DateTime.now().weekday - 1).clamp(0, 6);
 
     final double avgTemp = history.isEmpty
         ? 22.1
@@ -164,9 +185,16 @@ class StatsScreen extends StatelessWidget {
                         return Row(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: List.generate(_days.length, (i) {
-                            final bool isActive = i == 4; // Friday highlighted
-                            final double barHeight =
-                                maxBarHeight * (_bars[i] / 100.0);
+                            final int count =
+                                i < weeklySessions.length ? weeklySessions[i] : 0;
+                            final bool isToday = i == currentWeekdayIndex;
+                            final bool isBestDay = i == bestDayIndex && count > 0;
+                            final bool isHighlighted = isToday || isBestDay;
+                            final double calculatedHeight =
+                                maxBarHeight * (count / maxBarScale);
+                            final double barHeight = count == 0
+                                ? 4.0
+                                : calculatedHeight.clamp(4.0, maxBarHeight);
 
                             return Expanded(
                               child: Padding(
@@ -182,7 +210,7 @@ class StatsScreen extends StatelessWidget {
                                         gradient: LinearGradient(
                                           begin: Alignment.topCenter,
                                           end: Alignment.bottomCenter,
-                                          colors: isActive
+                                          colors: isHighlighted
                                               ? const [
                                                   Color(0xFF5DB0FF),
                                                   Color(0xFF1877ED),
@@ -198,7 +226,7 @@ class StatsScreen extends StatelessWidget {
                                           bottomLeft: Radius.circular(2),
                                           bottomRight: Radius.circular(2),
                                         ),
-                                        boxShadow: isActive
+                                        boxShadow: isHighlighted
                                             ? [
                                                 BoxShadow(
                                                   color: const Color(0xFF2E8BFF)
@@ -215,11 +243,11 @@ class StatsScreen extends StatelessWidget {
                                       child: Text(
                                         _days[i],
                                         style: TextStyle(
-                                          color: isActive
+                                          color: isHighlighted
                                               ? const Color(0xFF57AAFF)
                                               : const Color(0xFF647188),
                                           fontSize: 9,
-                                          fontWeight: isActive
+                                          fontWeight: isHighlighted
                                               ? FontWeight.w700
                                               : FontWeight.w400,
                                         ),
@@ -274,12 +302,12 @@ class StatsScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              const Expanded(
+              Expanded(
                 child: _SummaryCard(
                   label: 'BEST DAY',
-                  value: 'Fri',
-                  sub: '5 sessions',
-                  valueColor: Color(0xFF2E8BFF),
+                  value: bestDayLabel,
+                  sub: bestDaySub,
+                  valueColor: const Color(0xFF2E8BFF),
                 ),
               ),
             ],
