@@ -1,16 +1,19 @@
 /**
- * ZenWizard / ZenWizard Firmware (v2.4.1)
- * Team Arduino Tres - Arduino Uno R3 (CH340)
+ * ZenWizard / ZenWizard Firmware (v2.5.0 - Dual USB Serial + HM-10 BLE)
+ * Team Arduino Tres - Arduino Uno R3 (CH340) + HM-10 BLE 4.0
  * Non-blocking Cooperative Multitasking Architecture
  */
 
 #include <Arduino.h>
 #include <DHT.h>
+#include <SoftwareSerial.h>
 #include <math.h>
 
 // =================== PIN DEFINITIONS ===================
 #define PIN_DHT     2
 #define DHT_TYPE    DHT11
+#define PIN_BLE_RX  4   // Connected to HM-10 TXD
+#define PIN_BLE_TX  5   // Connected to HM-10 RXD (use voltage divider 5V -> 3.3V)
 #define PIN_LDR     A0
 #define PIN_BUZZER  8
 #define PIN_LED_R   9
@@ -42,9 +45,10 @@ const float LUX_CALC_EXPONENT = -1.405;
 
 // =================== STATE & TELEMETRY GLOBALS ===================
 DHT dht(PIN_DHT, DHT_TYPE);
+SoftwareSerial bleSerial(4, 5); // RX = D4 (HM-10 TXD), TX = D5 (HM-10 RXD)
 
 unsigned long lastLdrMillis        = 0;
-unsigned long lastDhtMillis        = 0;
+unsigned long lastDhtMillis        = 250; // Staggered by 250ms from Serial/BLE TX
 unsigned long lastSerialMillis     = 0;
 unsigned long lastAlertToggle      = 0;
 unsigned long alertStartMillis     = 0;
@@ -70,10 +74,12 @@ enum SystemMode {
 SystemMode currentMode = MODE_AMBIENT_MONITOR;
 bool alertPulseState = false;
 
-// Non-blocking Serial RX Buffer
+// Non-blocking Dual Serial RX Buffers (USB Hardware Serial + HM-10 BLE SoftwareSerial)
 const byte RX_BUFFER_SIZE = 64;
-char rxBuffer[RX_BUFFER_SIZE];
-byte rxIndex = 0;
+char usbRxBuffer[RX_BUFFER_SIZE];
+byte usbRxIndex = 0;
+char bleRxBuffer[RX_BUFFER_SIZE];
+byte bleRxIndex = 0;
 
 // =================== HELPER FUNCTIONS ===================
 void setRgbColor(uint8_t r, uint8_t g, uint8_t b) {
@@ -157,22 +163,32 @@ void processCommand(char* cmd) {
   }
 }
 
-void pollSerialRx() {
-  while (Serial.available() > 0) {
-    char c = Serial.read();
+void pollStreamRx(Stream& stream, char* buffer, byte& index, bool isBle) {
+  while (stream.available() > 0) {
+    char c = stream.read();
     if (c == '\n') {
-      rxBuffer[rxIndex] = '\0';
-      if (rxIndex > 0) {
-        processCommand(rxBuffer);
+      buffer[index] = '\0';
+      if (index > 0) {
+        if (isBle) {
+          Serial.print(F("[BLE RX] "));
+          Serial.println(buffer);
+        }
+        processCommand(buffer);
       }
-      rxIndex = 0;
-    } else if (rxIndex < RX_BUFFER_SIZE - 1) {
-      rxBuffer[rxIndex++] = c;
+      index = 0;
+    } else if (index < RX_BUFFER_SIZE - 1) {
+      buffer[index++] = c;
     } else {
       // Buffer overflow protection: reset index
-      rxIndex = 0;
+      index = 0;
     }
   }
+}
+
+void pollSerialRx() {
+  // Poll both USB Hardware Serial and HM-10 BLE SoftwareSerial independently
+  pollStreamRx(Serial, usbRxBuffer, usbRxIndex, false);
+  pollStreamRx(bleSerial, bleRxBuffer, bleRxIndex, true);
 }
 
 // =================== SENSOR & ACTUATOR TASKS ===================
@@ -195,7 +211,7 @@ void updateLdrTask(unsigned long now) {
   }
 }
 
-void updateDhtTask(unsigned long now) {
+bool updateDhtTask(unsigned long now) {
   if (now - lastDhtMillis >= INTERVAL_DHT_MS) {
     lastDhtMillis = now;
     float h = dht.readHumidity();
@@ -206,7 +222,9 @@ void updateDhtTask(unsigned long now) {
       lastValidTemp = t;
       dhtInitialized = true;
     }
+    return true;
   }
+  return false;
 }
 
 void updateActuatorStateMachine(unsigned long now) {
@@ -252,17 +270,69 @@ void updateActuatorStateMachine(unsigned long now) {
   }
 }
 
-void sendTelemetryTask(unsigned long now) {
+void writeTelemetryJson(Print& out) {
+  out.print(F("{\"lux\":"));
+  out.print(smoothedLux, 1);
+  out.print(F(",\"temp\":"));
+  out.print(lastValidTemp, 1);
+  out.print(F(",\"hum\":"));
+  out.print(lastValidHum, 1);
+  out.println(F("}")); // Emits "}\r\n" to flush BT05 UART notification buffer
+}
+
+void sendTelemetryTask(unsigned long now, bool dhtRanThisTick) {
+  // Stagger SoftwareSerial TX so its 37.5ms interrupt-blocking burst never
+  // collides with DHT11 microsecond bit-banging on the exact same tick
+  if (dhtRanThisTick) {
+    return;
+  }
   if (now - lastSerialMillis >= INTERVAL_SERIAL_MS) {
     lastSerialMillis = now;
     // Emit strict newline-delimited JSON matching TelemetryData.fromJson()
-    Serial.print(F("{\"lux\":"));
-    Serial.print(smoothedLux, 1);
-    Serial.print(F(",\"temp\":"));
-    Serial.print(lastValidTemp, 1);
-    Serial.print(F(",\"hum\":"));
-    Serial.print(lastValidHum, 1);
-    Serial.println(F("}"));
+    // to both USB Hardware Serial and HM-10 BLE SoftwareSerial
+    writeTelemetryJson(Serial);
+    writeTelemetryJson(bleSerial);
+  }
+}
+
+void initBt05Ble() {
+  bleSerial.begin(9600);
+  bleSerial.listen();
+  delay(50);
+
+  // Probe BT05 at 9600 baud (only responds with OK when not yet BLE-connected)
+  bleSerial.print(F("AT\r\n"));
+  unsigned long t0 = millis();
+  bool gotResponse = false;
+  while (millis() - t0 < 120) {
+    if (bleSerial.available() > 0) {
+      if (!gotResponse) {
+        Serial.print(F("[BLE RX] "));
+        gotResponse = true;
+      }
+      Serial.write(bleSerial.read());
+    }
+  }
+  if (gotResponse) {
+    Serial.println();
+    return;
+  }
+
+  // If no response at 9600, nudge common factory BT05 baud rates (38400 / 115200)
+  // down to 9600 (AT+BAUD0 for HM-10/MLT-BT05, AT+BAUD4 for Bolutek CC2541)
+  const long fallbackRates[2] = {38400, 115200};
+  for (byte i = 0; i < 2; i++) {
+    bleSerial.begin(fallbackRates[i]);
+    delay(20);
+    bleSerial.print(F("AT+BAUD0\r\n"));
+    delay(40);
+  }
+
+  // Lock SoftwareSerial cleanly at 9600 baud for normal runtime streaming
+  bleSerial.begin(9600);
+  bleSerial.listen();
+  while (bleSerial.available() > 0) {
+    bleSerial.read();
   }
 }
 
@@ -277,28 +347,33 @@ void setup() {
   setBuzzer(false);
 
   Serial.begin(9600);
+  initBt05Ble();
   dht.begin();
+
+  // Stagger DHT11 polling by 250ms relative to 500ms Serial/BLE telemetry interval
+  lastDhtMillis = 250;
 
   // Prime initial LDR reading
   smoothedLux = adcToLux(analogRead(PIN_LDR));
 
-  // Notify Flutter SerialPortService that CH340 DTR reset has completed
-  Serial.println(F("{\"status\":\"READY\",\"fw\":\"2.4.1\"}"));
+  // Notify Flutter SerialPortService / BleService that initialization has completed
+  Serial.println(F("{\"status\":\"READY\",\"fw\":\"2.5.0\"}"));
+  bleSerial.println(F("{\"status\":\"READY\",\"fw\":\"2.5.0\"}"));
 }
 
 void loop() {
   unsigned long now = millis();
 
-  // 1. Check incoming Serial commands on every single CPU tick
+  // 1. Check incoming Serial & BLE commands on every single CPU tick
   pollSerialRx();
 
   // 2. Cooperative non-blocking sensor tasks
   updateLdrTask(now);
-  updateDhtTask(now);
+  bool dhtRanThisTick = updateDhtTask(now);
 
   // 3. Drive RGB LED & Active Buzzer state machine without delay()
   updateActuatorStateMachine(now);
 
-  // 4. Stream JSON telemetry to Flutter
-  sendTelemetryTask(now);
+  // 4. Stream JSON telemetry to Flutter over both USB Serial and HM-10 BLE
+  sendTelemetryTask(now, dhtRanThisTick);
 }

@@ -1,67 +1,86 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_libserialport/flutter_libserialport.dart';
 import '../models/telemetry_data.dart';
+import 'ble_service.dart';
+import 'serial_port_adapter.dart';
 
 class SerialPortService {
-  SerialPort? _port;
-  SerialPortReader? _reader;
+  final SerialPortAdapter _adapter = createSerialPortAdapter();
+  final BleService _bleService;
   StreamSubscription<String>? _lineSubscription;
+  StreamSubscription<TelemetryData>? _bleTelemetrySubscription;
   Timer? _mockTimer;
   String? _activePortName;
 
   final StreamController<TelemetryData> _telemetryController =
       StreamController<TelemetryData>.broadcast();
 
+  SerialPortService({BleService? bleService})
+      : _bleService = bleService ?? BleService() {
+    _bleTelemetrySubscription =
+        _bleService.telemetryStream.listen((TelemetryData data) {
+      if (isMockRunning) {
+        _mockTimer?.cancel();
+        _mockTimer = null;
+      }
+      if (!_telemetryController.isClosed) {
+        _telemetryController.add(data);
+      }
+    });
+  }
+
+  BleService get bleService => _bleService;
+
   Stream<TelemetryData> get telemetryStream => _telemetryController.stream;
 
-  bool get isConnected => _port != null && _port!.isOpen;
+  bool get isUsbConnected => _adapter.isOpen;
+
+  bool get isBleConnected => _bleService.isConnected;
+
+  bool get isConnected => isUsbConnected || isBleConnected;
 
   bool get isMockRunning => _mockTimer != null && _mockTimer!.isActive;
 
-  String get activePortLabel =>
-      isConnected ? (_activePortName ?? 'USB Serial') : 'Mock Mode (Sim)';
+  bool get isDesktopSerialSupported => !kIsWeb && _adapter.isSupported;
+
+  String get activePortLabel {
+    if (isBleConnected) {
+      return _bleService.activeDeviceLabel;
+    }
+    if (isUsbConnected) {
+      return _activePortName ?? 'USB Serial';
+    }
+    return 'Mock Mode (Sim)';
+  }
 
   List<String> getAvailablePorts() {
-    if (kIsWeb) return const [];
-    try {
-      return SerialPort.availablePorts;
-    } catch (e) {
-      debugPrint('SerialPort enumeration unavailable: $e');
-      return const [];
-    }
+    if (kIsWeb || !_adapter.isSupported) return const [];
+    return _adapter.getAvailablePorts();
   }
 
   Future<bool> connect(String portName, {int baudRate = 9600}) async {
-    if (kIsWeb) {
+    if (kIsWeb || !_adapter.isSupported) {
       startMockStream();
       return false;
     }
 
-    await disconnect();
+    await disconnectUsb();
 
     try {
-      final port = SerialPort(portName);
-      if (!port.openReadWrite()) {
-        port.dispose();
+      if (!_adapter.openPort(portName, baudRate)) {
         return false;
       }
 
-      final config = SerialPortConfig()
-        ..baudRate = baudRate
-        ..bits = 8
-        ..stopBits = 1
-        ..parity = SerialPortParity.none
-        ..setFlowControl(SerialPortFlowControl.none);
-      port.config = config;
-
-      _port = port;
       _activePortName = portName;
-      _reader = SerialPortReader(port);
+      final inputStream = _adapter.inputStream;
+      if (inputStream == null) {
+        await disconnectUsb();
+        return false;
+      }
 
       // CRITICAL FIX: Buffer partial Uint8List USB chunks until '\n'
-      _lineSubscription = _reader!.stream
+      _lineSubscription = inputStream
           .map((Uint8List data) => utf8.decode(data, allowMalformed: true))
           .transform(const LineSplitter())
           .listen(
@@ -75,25 +94,29 @@ class SerialPortService {
       return true;
     } catch (e) {
       debugPrint('Failed to connect to $portName: $e');
-      await disconnect();
+      await disconnectUsb();
       return false;
     }
   }
 
   /// Starts simulated telemetry when running in Chrome/Web or without hardware
   void startMockStream() {
+    if (isConnected) return;
     _mockTimer?.cancel();
-    _telemetryController.add(
-      TelemetryData(
-        lux: 419.0,
-        temperature: 23.8,
-        humidity: 52.0,
-        timestamp: DateTime.now(),
-      ),
-    );
+    if (!_telemetryController.isClosed) {
+      _telemetryController.add(
+        TelemetryData(
+          lux: 419.0,
+          temperature: 23.8,
+          humidity: 52.0,
+          timestamp: DateTime.now(),
+        ),
+      );
+    }
 
     int tick = 0;
     _mockTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (isConnected || _telemetryController.isClosed) return;
       tick++;
       final double simulatedLux = 415.0 + ((tick % 5) * 2.0);
       final double simulatedTemp = 23.6 + ((tick % 3) * 0.1);
@@ -110,8 +133,11 @@ class SerialPortService {
   }
 
   void _handleIncomingLine(String rawLine) {
-    final line = rawLine.trim();
-    if (!line.startsWith('{') || !line.endsWith('}')) return;
+    final startIdx = rawLine.indexOf('{');
+    final endIdx = rawLine.lastIndexOf('}');
+    if (startIdx < 0 || endIdx <= startIdx) return;
+
+    final line = rawLine.substring(startIdx, endIdx + 1).trim();
 
     // Guard against unquoted NaN from legacy firmware
     if (line.contains('nan') || line.contains('NaN')) return;
@@ -124,7 +150,9 @@ class SerialPortService {
       }
 
       final telemetry = TelemetryData.fromJson(decoded);
-      _telemetryController.add(telemetry);
+      if (!_telemetryController.isClosed) {
+        _telemetryController.add(telemetry);
+      }
     } catch (e) {
       debugPrint('Dropped malformed frame: $line');
     }
@@ -136,35 +164,40 @@ class SerialPortService {
       debugPrint('Mock TX -> ${payload.trim()}');
       return;
     }
-    try {
-      _port!.write(Uint8List.fromList(utf8.encode(payload)));
-    } catch (e) {
-      debugPrint('Serial TX Error: $e');
+    if (isUsbConnected) {
+      try {
+        _adapter.writeBytes(Uint8List.fromList(utf8.encode(payload)));
+      } catch (e) {
+        debugPrint('Serial TX Error: $e');
+      }
+    }
+    if (isBleConnected) {
+      _bleService.sendCommand(payload);
     }
   }
 
-  Future<void> disconnect() async {
+  Future<void> disconnectUsb() async {
     _mockTimer?.cancel();
     _mockTimer = null;
 
     await _lineSubscription?.cancel();
     _lineSubscription = null;
 
-    _reader?.close();
-    _reader = null;
+    _adapter.closePort();
+    _activePortName = null;
+  }
 
-    if (_port != null) {
-      try {
-        if (_port!.isOpen) _port!.close();
-        _port!.dispose();
-      } catch (_) {}
-      _port = null;
-      _activePortName = null;
+  Future<void> disconnect() async {
+    await disconnectUsb();
+    if (isBleConnected) {
+      await _bleService.disconnect();
     }
   }
 
   void dispose() {
-    disconnect();
+    _bleTelemetrySubscription?.cancel();
+    disconnectUsb();
+    _bleService.dispose();
     _telemetryController.close();
   }
 }

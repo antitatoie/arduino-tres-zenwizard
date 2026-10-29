@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/pomodoro_state.dart';
 import '../providers/environment_provider.dart';
 import '../providers/timer_provider.dart';
+import '../services/ble_service.dart';
 
 class HomeScreen extends StatefulWidget {
   final VoidCallback? onOpenSettings;
@@ -16,7 +17,467 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   String? _selectedPort;
+  String? _selectedBleId;
   bool _isConnecting = false;
+  bool? _forceBleMode;
+
+  void _showBleScannerSheet(
+    BuildContext context,
+    EnvironmentProvider envProvider,
+  ) {
+    if (!envProvider.isBleScanning &&
+        envProvider.discoveredBleDevices.isEmpty) {
+      envProvider.startBleScan();
+    }
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF121923),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        side: BorderSide(color: Color(0xFF222C3C)),
+      ),
+      builder: (sheetContext) {
+        return Consumer<EnvironmentProvider>(
+          builder: (ctx, env, _) {
+            final devices = env.discoveredBleDevices;
+            final isScanning = env.isBleScanning;
+            final errorText = env.bleLastError;
+
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'HM-10 BLE SCANNER',
+                              style: TextStyle(
+                                color: Color(0xFF718096),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 1.4,
+                              ),
+                            ),
+                            SizedBox(height: 3),
+                            Text(
+                              'Service FFE0 • UART Characteristic FFE1',
+                              style: TextStyle(
+                                color: Color(0xFF8A99AD),
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                        TextButton.icon(
+                          style: TextButton.styleFrom(
+                            backgroundColor: const Color(0xFF1E293B),
+                            foregroundColor: const Color(0xFF63ADFF),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          onPressed: () {
+                            if (isScanning) {
+                              env.stopBleScan();
+                            } else {
+                              env.startBleScan();
+                            }
+                          },
+                          icon: isScanning
+                              ? const SizedBox(
+                                  width: 12,
+                                  height: 12,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Color(0xFF63ADFF),
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.bluetooth_searching_rounded,
+                                  size: 15,
+                                ),
+                          label: Text(
+                            isScanning ? 'Stop' : 'Scan',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (errorText != null) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2C1215),
+                          border: Border.all(color: const Color(0xFF7F1D1D)),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          errorText,
+                          style: const TextStyle(
+                            color: Color(0xFFF87171),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    if (devices.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        child: Center(
+                          child: Text(
+                            isScanning
+                                ? 'Scanning for HM-10 (HMSoft / FFE0)...'
+                                : 'No HM-10 BLE modules found nearby.\nEnsure HM-10 is powered (VCC -> 5V, GND -> GND).',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Color(0xFF8A99AD),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      Flexible(
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          itemCount: devices.length,
+                          separatorBuilder: (_, _) => const SizedBox(height: 8),
+                          itemBuilder: (_, index) {
+                            final BleDiscoveredDevice dev = devices[index];
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 11,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF151C28),
+                                border: Border.all(
+                                  color: dev.isHm10Candidate
+                                      ? const Color(0xFF2E8BFF)
+                                      : const Color(0xFF222C3C),
+                                ),
+                                borderRadius: BorderRadius.circular(13),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.bluetooth_rounded,
+                                    color: dev.isHm10Candidate
+                                        ? const Color(0xFF63ADFF)
+                                        : const Color(0xFF8A99AD),
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Flexible(
+                                              child: Text(
+                                                dev.name,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                            ),
+                                            if (dev.isHm10Candidate) ...[
+                                              const SizedBox(width: 6),
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                  horizontal: 6,
+                                                  vertical: 2,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFF2E8BFF)
+                                                      .withValues(alpha: 0.2),
+                                                  borderRadius:
+                                                      BorderRadius.circular(6),
+                                                ),
+                                                child: const Text(
+                                                  'HM-10',
+                                                  style: TextStyle(
+                                                    color: Color(0xFF63ADFF),
+                                                    fontSize: 9,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          '${dev.id} • ${dev.rssi} dBm',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Color(0xFF8A99AD),
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  SizedBox(
+                                    height: 30,
+                                    child: ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor:
+                                            const Color(0xFF2E8BFF),
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                      onPressed: () async {
+                                        Navigator.of(sheetContext).pop();
+                                        setState(() {
+                                          _selectedBleId = dev.id;
+                                          _isConnecting = true;
+                                        });
+                                        await env.connectToBleDevice(dev);
+                                        if (mounted) {
+                                          setState(() => _isConnecting = false);
+                                        }
+                                      },
+                                      child: const Text(
+                                        'Connect',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildBleConnectionBar(
+    BuildContext context,
+    EnvironmentProvider envProvider,
+  ) {
+    final bleDevices = envProvider.discoveredBleDevices;
+    if (_selectedBleId != null &&
+        !bleDevices.any((d) => d.id == _selectedBleId)) {
+      _selectedBleId = bleDevices.isNotEmpty ? bleDevices.first.id : null;
+    } else if (_selectedBleId == null && bleDevices.isNotEmpty) {
+      _selectedBleId = bleDevices.first.id;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF151C28),
+        border: Border.all(color: const Color(0xFF222C3C)),
+        borderRadius: BorderRadius.circular(13),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: envProvider.isBleConnected
+                  ? const Color(0xFF10B981)
+                  : const Color(0xFFF59E0B),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: envProvider.isBleConnected
+                      ? const Color(0xFF10B981)
+                      : const Color(0xFFF59E0B),
+                  blurRadius: 6,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Icon(
+            Icons.bluetooth_rounded,
+            color: Color(0xFF63ADFF),
+            size: 16,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: envProvider.isBleConnected || bleDevices.isEmpty
+                ? GestureDetector(
+                    onTap: () => _showBleScannerSheet(context, envProvider),
+                    child: Text(
+                      envProvider.isBleConnected
+                          ? envProvider.activePortLabel
+                          : (envProvider.isBleScanning
+                              ? 'Scanning HM-10 BLE...'
+                              : 'HM-10 BLE • Tap to Scan'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: envProvider.isBleConnected
+                            ? Colors.white
+                            : const Color(0xFF8A99AD),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  )
+                : DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _selectedBleId,
+                      isDense: true,
+                      isExpanded: true,
+                      dropdownColor: const Color(0xFF151C28),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      items: bleDevices
+                          .map(
+                            (dev) => DropdownMenuItem<String>(
+                              value: dev.id,
+                              child: Text(
+                                '${dev.name} (${dev.rssi} dBm)',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (val) {
+                        setState(() => _selectedBleId = val);
+                      },
+                    ),
+                  ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            height: 30,
+            child: TextButton(
+              style: TextButton.styleFrom(
+                backgroundColor: envProvider.isBleConnected
+                    ? const Color(0xFF1E293B)
+                    : const Color(0xFF2E8BFF),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              onPressed: _isConnecting
+                  ? null
+                  : () async {
+                      if (envProvider.isBleConnected) {
+                        await envProvider.disconnectBle();
+                        return;
+                      }
+                      final target = bleDevices.where(
+                        (d) => d.id == _selectedBleId,
+                      );
+                      if (target.isEmpty) {
+                        _showBleScannerSheet(context, envProvider);
+                        return;
+                      }
+                      setState(() => _isConnecting = true);
+                      await envProvider.connectToBleDevice(target.first);
+                      if (mounted) {
+                        setState(() => _isConnecting = false);
+                      }
+                    },
+              child: Text(
+                _isConnecting
+                    ? '...'
+                    : (envProvider.isBleConnected
+                        ? 'Disconnect'
+                        : (bleDevices.isEmpty ? 'Scan' : 'Connect')),
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          SizedBox(
+            width: 30,
+            height: 30,
+            child: IconButton(
+              padding: EdgeInsets.zero,
+              icon: const Icon(
+                Icons.bluetooth_searching_rounded,
+                color: Color(0xFF8A99AD),
+                size: 17,
+              ),
+              tooltip: 'Scan HM-10 BLE Devices',
+              onPressed: () => _showBleScannerSheet(context, envProvider),
+            ),
+          ),
+          if (!envProvider.isMobilePlatform) ...[
+            const SizedBox(width: 2),
+            SizedBox(
+              width: 28,
+              height: 30,
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                icon: const Icon(
+                  Icons.usb_rounded,
+                  color: Color(0xFF8A99AD),
+                  size: 16,
+                ),
+                tooltip: 'Switch to USB Serial',
+                onPressed: () {
+                  setState(() => _forceBleMode = false);
+                },
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -109,148 +570,170 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 16),
 
-          // Top COM Port Connection Bar
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF151C28),
-              border: Border.all(color: const Color(0xFF222C3C)),
-              borderRadius: BorderRadius.circular(13),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: envProvider.isConnected
-                        ? const Color(0xFF10B981)
-                        : const Color(0xFFF59E0B),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: envProvider.isConnected
-                            ? const Color(0xFF10B981)
-                            : const Color(0xFFF59E0B),
-                        blurRadius: 6,
-                      ),
-                    ],
+          // Top Connection Bar (HM-10 BLE Scanner on Mobile / BLE mode, or USB COM Port Bar on Desktop)
+          if (envProvider.isMobilePlatform ||
+              envProvider.isBleConnected ||
+              (_forceBleMode ?? false))
+            _buildBleConnectionBar(context, envProvider)
+          else
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF151C28),
+                border: Border.all(color: const Color(0xFF222C3C)),
+                borderRadius: BorderRadius.circular(13),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: envProvider.isConnected
+                          ? const Color(0xFF10B981)
+                          : const Color(0xFFF59E0B),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: envProvider.isConnected
+                              ? const Color(0xFF10B981)
+                              : const Color(0xFFF59E0B),
+                          blurRadius: 6,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ports.isEmpty
-                      ? Text(
-                          envProvider.activePortLabel,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFF8A99AD),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        )
-                      : DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _selectedPort,
-                            isDense: true,
-                            isExpanded: true,
-                            dropdownColor: const Color(0xFF151C28),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ports.isEmpty
+                        ? Text(
+                            envProvider.activePortLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                              color: Colors.white,
+                              color: Color(0xFF8A99AD),
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
                             ),
-                            items: ports
-                                .map(
-                                  (port) => DropdownMenuItem<String>(
-                                    value: port,
-                                    child: Text(
-                                      port,
-                                      overflow: TextOverflow.ellipsis,
+                          )
+                        : DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: _selectedPort,
+                              isDense: true,
+                              isExpanded: true,
+                              dropdownColor: const Color(0xFF151C28),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              items: ports
+                                  .map(
+                                    (port) => DropdownMenuItem<String>(
+                                      value: port,
+                                      child: Text(
+                                        port,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (val) {
-                              setState(() => _selectedPort = val);
-                            },
+                                  )
+                                  .toList(),
+                              onChanged: (val) {
+                                setState(() => _selectedPort = val);
+                              },
+                            ),
                           ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    height: 30,
+                    child: TextButton(
+                      style: TextButton.styleFrom(
+                        backgroundColor: envProvider.isConnected
+                            ? const Color(0xFF1E293B)
+                            : const Color(0xFF2E8BFF),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  height: 30,
-                  child: TextButton(
-                    style: TextButton.styleFrom(
-                      backgroundColor: envProvider.isConnected
-                          ? const Color(0xFF1E293B)
-                          : const Color(0xFF2E8BFF),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
                       ),
-                    ),
-                    onPressed: _isConnecting
-                        ? null
-                        : () async {
-                            if (envProvider.isConnected) {
-                              await envProvider.disconnectPort();
-                              return;
-                            }
-                            final target = _selectedPort ??
-                                (ports.isNotEmpty ? ports.first : null);
-                            if (target == null) {
-                              envProvider.refreshPorts();
-                              return;
-                            }
-                            setState(() => _isConnecting = true);
-                            await envProvider.connectToPort(target);
-                            if (mounted) {
-                              setState(() => _isConnecting = false);
-                            }
-                          },
-                    child: Text(
-                      _isConnecting
-                          ? '...'
-                          : (envProvider.isConnected
-                              ? 'Disconnect'
-                              : 'Connect'),
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
+                      onPressed: _isConnecting
+                          ? null
+                          : () async {
+                              if (envProvider.isConnected) {
+                                await envProvider.disconnectPort();
+                                return;
+                              }
+                              final target = _selectedPort ??
+                                  (ports.isNotEmpty ? ports.first : null);
+                              if (target == null) {
+                                envProvider.refreshPorts();
+                                return;
+                              }
+                              setState(() => _isConnecting = true);
+                              await envProvider.connectToPort(target);
+                              if (mounted) {
+                                setState(() => _isConnecting = false);
+                              }
+                            },
+                      child: Text(
+                        _isConnecting
+                            ? '...'
+                            : (envProvider.isConnected
+                                ? 'Disconnect'
+                                : 'Connect'),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 4),
-                SizedBox(
-                  width: 30,
-                  height: 30,
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    icon: const Icon(
-                      Icons.refresh_rounded,
-                      color: Color(0xFF8A99AD),
-                      size: 17,
+                  const SizedBox(width: 4),
+                  SizedBox(
+                    width: 30,
+                    height: 30,
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(
+                        Icons.refresh_rounded,
+                        color: Color(0xFF8A99AD),
+                        size: 17,
+                      ),
+                      tooltip: 'Refresh Ports',
+                      onPressed: () {
+                        envProvider.refreshPorts();
+                        final updated = envProvider.availablePorts;
+                        setState(() {
+                          if (updated.isNotEmpty &&
+                              !updated.contains(_selectedPort)) {
+                            _selectedPort = updated.first;
+                          }
+                        });
+                      },
                     ),
-                    tooltip: 'Refresh Ports',
-                    onPressed: () {
-                      envProvider.refreshPorts();
-                      final updated = envProvider.availablePorts;
-                      setState(() {
-                        if (updated.isNotEmpty &&
-                            !updated.contains(_selectedPort)) {
-                          _selectedPort = updated.first;
-                        }
-                      });
-                    },
                   ),
-                ),
-              ],
+                  const SizedBox(width: 2),
+                  SizedBox(
+                    width: 28,
+                    height: 30,
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(
+                        Icons.bluetooth_rounded,
+                        color: Color(0xFF63ADFF),
+                        size: 17,
+                      ),
+                      tooltip: 'Switch to HM-10 BLE Mode',
+                      onPressed: () {
+                        setState(() => _forceBleMode = true);
+                      },
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
           const SizedBox(height: 18),
 
           // 3-Column Sensor Metric Grid

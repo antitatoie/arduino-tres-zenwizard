@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/settings_config.dart';
 import '../models/telemetry_data.dart';
 import '../models/user_profile.dart';
+import '../services/ble_service.dart';
 import '../services/serial_port_service.dart';
 import '../services/threshold_alert_service.dart';
 
@@ -17,6 +18,7 @@ class EnvironmentProvider extends ChangeNotifier {
   final ThresholdAlertService _alertService;
   final void Function(UserProfile profile)? onActiveProfileChanged;
   StreamSubscription<TelemetryData>? _subscription;
+  StreamSubscription<void>? _bleStateSubscription;
 
   List<UserProfile> _profiles = _seedDefaultProfiles();
   String _activeProfileId = 'profile_krizha';
@@ -25,6 +27,7 @@ class EnvironmentProvider extends ChangeNotifier {
   TelemetryData? _latestTelemetry;
   EnvironmentEvaluation? _latestEvaluation;
   final List<TelemetryData> _history = [];
+  bool _wasBleConnected = false;
 
   EnvironmentProvider(
     this._serialService,
@@ -34,6 +37,17 @@ class EnvironmentProvider extends ChangeNotifier {
     _config = activeProfile.settings;
     _subscription =
         _serialService.telemetryStream.listen(_onTelemetryReceived);
+    _bleStateSubscription = _serialService.bleService.onStateChanged.listen((_) {
+      final nowBleConnected = _serialService.isBleConnected;
+      if (nowBleConnected && !_wasBleConnected) {
+        _syncHardwareSettings();
+      }
+      _wasBleConnected = nowBleConnected;
+      if (!_serialService.isConnected && !_serialService.isMockRunning) {
+        _serialService.startMockStream();
+      }
+      notifyListeners();
+    });
     _initConnection();
     _loadProfilesFromPrefs();
   }
@@ -151,20 +165,35 @@ class EnvironmentProvider extends ChangeNotifier {
   }
 
   Future<void> _initConnection() async {
-    final ports = _serialService.getAvailablePorts();
-    if (ports.isNotEmpty) {
-      final connected = await _serialService.connect(ports.first);
-      if (connected) {
-        _serialService.sendCommand(
-          'CMD:LUX_MIN:${_config.lightAlertThresholdLux.toStringAsFixed(0)}',
-        );
-        notifyListeners();
-        return;
+    if (_serialService.isDesktopSerialSupported) {
+      final ports = _serialService.getAvailablePorts();
+      if (ports.isNotEmpty) {
+        final connected = await _serialService.connect(ports.first);
+        if (connected) {
+          _syncHardwareSettings();
+          notifyListeners();
+          return;
+        }
       }
     }
-    // Fallback to simulated telemetry when in Chrome or unplugged
+
+    // Fallback to simulated telemetry until hardware or BLE auto-connect streams live packets
     _serialService.startMockStream();
     notifyListeners();
+
+    // Auto-scan and connect to BT05 (7C:01:0A:39:14:00) on mobile startup
+    if (isMobilePlatform && isBleSupported) {
+      unawaited(_serialService.bleService.startScan(autoConnectTarget: true));
+    }
+  }
+
+  void _syncHardwareSettings() {
+    _serialService.sendCommand(
+      'CMD:LUX_MIN:${_config.minLightLux.toStringAsFixed(0)}',
+    );
+    _serialService.sendCommand(
+      _config.isBuzzerMuted ? 'CMD:BUZZER:MUTE' : 'CMD:BUZZER:UNMUTE',
+    );
   }
 
   List<UserProfile> get profiles => List.unmodifiable(_profiles);
@@ -181,6 +210,17 @@ class EnvironmentProvider extends ChangeNotifier {
   EnvironmentEvaluation? get latestEvaluation => _latestEvaluation;
   List<TelemetryData> get history => List.unmodifiable(_history);
   bool get isConnected => _serialService.isConnected;
+  bool get isUsbConnected => _serialService.isUsbConnected;
+  bool get isBleConnected => _serialService.isBleConnected;
+  bool get isBleScanning => _serialService.bleService.isScanning;
+  String? get bleLastError => _serialService.bleService.lastError;
+  List<BleDiscoveredDevice> get discoveredBleDevices =>
+      _serialService.bleService.discoveredDevices;
+  bool get isMobilePlatform =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
+  bool get isBleSupported => _serialService.bleService.isBleSupported;
   String get activePortLabel => _serialService.activePortLabel;
   List<String> get availablePorts => _serialService.getAvailablePorts();
 
@@ -253,9 +293,7 @@ class EnvironmentProvider extends ChangeNotifier {
   Future<bool> connectToPort(String portName) async {
     final ok = await _serialService.connect(portName);
     if (ok) {
-      _serialService.sendCommand(
-        'CMD:LUX_MIN:${_config.lightAlertThresholdLux.toStringAsFixed(0)}',
-      );
+      _syncHardwareSettings();
     }
     notifyListeners();
     return ok;
@@ -268,6 +306,33 @@ class EnvironmentProvider extends ChangeNotifier {
   }
 
   void refreshPorts() {
+    notifyListeners();
+  }
+
+  Future<void> startBleScan() async {
+    await _serialService.bleService.startScan();
+    notifyListeners();
+  }
+
+  Future<void> stopBleScan() async {
+    await _serialService.bleService.stopScan();
+    notifyListeners();
+  }
+
+  Future<bool> connectToBleDevice(BleDiscoveredDevice device) async {
+    final ok = await _serialService.bleService.connectToDiscoveredDevice(device);
+    if (ok) {
+      _syncHardwareSettings();
+    }
+    notifyListeners();
+    return ok;
+  }
+
+  Future<void> disconnectBle() async {
+    await _serialService.bleService.disconnect();
+    if (!_serialService.isConnected) {
+      _serialService.startMockStream();
+    }
     notifyListeners();
   }
 
@@ -290,12 +355,7 @@ class EnvironmentProvider extends ChangeNotifier {
       _profiles = nextList;
     }
     // Sync settings to Arduino Uno hardware (Lux + Buzzer Mute)
-    _serialService.sendCommand(
-      'CMD:LUX_MIN:${newConfig.minLightLux.toStringAsFixed(0)}',
-    );
-    _serialService.sendCommand(
-      newConfig.isBuzzerMuted ? 'CMD:BUZZER:MUTE' : 'CMD:BUZZER:UNMUTE',
-    );
+    _syncHardwareSettings();
     if (_latestTelemetry != null) {
       _latestEvaluation = _alertService.evaluate(_latestTelemetry!, _config);
     }
@@ -306,6 +366,7 @@ class EnvironmentProvider extends ChangeNotifier {
   @override
   void dispose() {
     _subscription?.cancel();
+    _bleStateSubscription?.cancel();
     super.dispose();
   }
 }
